@@ -1,0 +1,41 @@
+services:
+  web:
+    build: .
+    container_name: next-web
+    user: "node"
+    working_dir: /workspace/app
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - HOME=/home/node
+      - NPM_CONFIG_PREFIX=/home/node/.npm-global
+      - PATH=/home/node/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    volumes:
+      - ./:/workspace
+      - npm_cache:/home/node/.npm
+    command: bash -lc "npm install && npm run dev -- --hostname 0.0.0.0 --port 3000"
+  
+  codex:
+    build: .
+    container_name: codex-cli
+    user: "node"
+    working_dir: /workspace/app
+    environment:
+      - NODE_ENV=development
+      - HOME=/home/node
+      - NPM_CONFIG_PREFIX=/home/node/.npm-global
+      - PATH=/home/node/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    volumes:
+      - ./:/workspace
+      - codex_config:/home/node/.codex
+      - npm_cache:/home/node/.npm
+    tty: true
+    stdin_open: true
+    command: bash
+    depends_on:
+      - web
+
+volumes:
+  codex_config:
+  npm_cache:
