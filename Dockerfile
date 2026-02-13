@@ -19,7 +19,7 @@ RUN mkdir -p /home/node/.npm-global /home/node/.codex /workspace \
 USER node
 
 # Codex CLI installieren (offiziell via npm)
-RUN npm install -g @openai/codex
+RUN npm install -g @openai/codex@latest
 
 WORKDIR /workspace
 
