@@ -22,6 +22,7 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
 - Runtime: React `19.2.3`, React DOM `19.2.3`
 - Language: TypeScript (`strict: true`, `noEmit: true`)
 - Styling: Tailwind CSS v4 (`@import "tailwindcss"`), PostCSS via `@tailwindcss/postcss`
+- Persistence (implemented for current slice): SQLite via `better-sqlite3`
 - Linting: ESLint v9 + `eslint-config-next/core-web-vitals` + `eslint-config-next/typescript`
 - Commands:
   - `npm run dev`
@@ -31,7 +32,12 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
 - Current app structure:
   - `src/app/layout.tsx`
   - `src/app/page.tsx`
+  - `src/app/admin/expense-types/page.tsx`
+  - `src/app/api/expense-types/route.ts`
+  - `src/app/api/expense-types/[id]/route.ts`
   - `src/app/globals.css`
+  - `src/lib/db.ts`
+  - `src/lib/expense-types-repo.ts`
   - `public/` for static assets
 - TS alias: `@/* -> ./src/*`
 
@@ -116,10 +122,15 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
 ### 4.7 Expense Type Administration
 - Maintain a fixed set of expense types as a separate entity.
 - Provide an admin section in the app to manage expense types.
+- Admin route path: `/admin/expense-types`.
 - Admin section capabilities:
   - Add expense type
   - Remove expense type
 - Expense-type selection in expense-entry forms must read from this maintained list.
+- API behavior for this feature:
+  - `GET /api/expense-types`: returns list sorted by `createdAt` ascending.
+  - `POST /api/expense-types`: validates `expenseTypeText` (required, trimmed non-empty, unique case-insensitive).
+  - `DELETE /api/expense-types/:id`: rejects deletion with `409` when referenced by accounting entries.
 
 ## 5. Data Model
 
@@ -149,6 +160,7 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
 ### 5.3 ExpenseType
 - `id`
 - `expenseTypeText`
+- `normalizedText` (persisted lowercase+trimmed value for uniqueness checks)
 - `createdAt`, `updatedAt`
 
 ### 5.4 Expense Type Relation (Derived Rule)
@@ -185,6 +197,8 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
   - annual P&L view
   - admin expense-type management
 - Suggested internal modules under `src/`:
+  - `src/lib/db.ts` for SQLite connection and schema initialization (implemented)
+  - `src/lib/expense-types-repo.ts` for expense-type persistence and validation rules (implemented)
   - `src/lib/openai/` for extraction client and prompt/schema
   - `src/lib/accounting/` for aggregation and P&L calculations
   - `src/lib/storage/` for local persistence and file handling
@@ -194,6 +208,7 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
 - Local-only execution is sufficient.
 - OpenAI API key should be provided via local environment variables (e.g., `.env.local`).
 - No deployment platform constraints for V1.
+- SQLite database file for current slice: `data/app.db` (created automatically on first write).
 - Local file storage:
   - Store uploaded invoice PDFs under a dedicated `upload` folder.
   - Accounting entries must reference the stored file so the original document can be opened from the UI.
@@ -227,3 +242,11 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
 13. Income entries include `paymentReceivedDate`, while `documentDate` remains the printed date on the source document.
 14. Expense entries require a `typeOfExpense` selected from a dropdown populated by a separately managed expense-type list.
 15. The app includes an admin section where users can add and remove expense types.
+
+## 11. Change Log
+
+### (2026-02-13)
+- The first implemented vertical slice is Expense Type Administration.
+- Deterministic API statuses are in place for that slice: success, validation (`400`), duplicate/conflict (`409`), and not found (`404`).
+- Deletion integrity is enforced by explicit reference checks against `accounting_entries.type_of_expense_id`.
+- Expense type uniqueness is enforced case-insensitively and trim-insensitively using persisted normalization.
