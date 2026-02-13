@@ -1,23 +1,29 @@
 # Project State
 
 - Last updated date: 2026-02-13
-- Current goal: define and deliver the first vertical slice, starting with Expense Type Administration.
+- Current goal: complete and stabilize the first vertical slice: Expense Type Administration.
 - Active feature spec(s): `docs/specs/001-expense-types-admin.md`.
 
 ## What is implemented
-- Base Next.js 16 app scaffold with App Router is present (`src/app/layout.tsx`, `src/app/page.tsx`, `src/app/globals.css`).
-- Tooling is configured: TypeScript strict mode, Tailwind v4, ESLint.
-- NPM scripts exist: `dev`, `build`, `start`, `lint`.
-- No domain modules, APIs, DB schema, or bookkeeping flows are implemented yet.
-- Feature spec for expense type admin is documented.
+- Expense type admin UI is available at `/admin/expense-types`.
+- API endpoints exist: `GET /api/expense-types`, `POST /api/expense-types`, `DELETE /api/expense-types/:id`.
+- SQLite persistence is implemented via `better-sqlite3` with local DB file `data/app.db`.
+- Expense type creation enforces trim/non-empty validation and case-insensitive uniqueness.
+- Expense type list is returned in stable order (`createdAt` ascending, then id).
+- Delete flow includes confirmation in UI and deterministic API statuses (`400/404/409/204`).
+- Deletion is blocked when an expense type is referenced by `accounting_entries.type_of_expense_id`.
 
 ## What remains
-- Implement expense type admin UI and endpoints (list/create/delete) per spec.
-- Add persistence layer and data constraints for expense type uniqueness/reference rules.
-- Add/validate error handling and conflict behavior.
-- Implement subsequent features (invoice upload/extraction/review/save, yearly overview, P&L).
+- Update root/home navigation so admin route is discoverable from `/`.
+- Add/update docs for API contract examples and local data reset workflow.
+- Implement next planned features (invoice upload/extraction/review/save, yearly overview, P&L).
+- Introduce a proper test runner and automated tests for API + UI behavior.
+
+## How to run (dev/tests)
+- Dev server: `npm run dev`
+- Lint: `npm run lint`
+- Build: `NODE_ENV=production npm run build`
 
 ## Known issues / open questions
-- Persistence technology (SQLite/Postgres/file-based) is not yet selected.
-- No test framework is configured.
-- Open product questions are tracked in `docs/specs/001-expense-types-admin.md`.
+- `npm run build` can fail in this environment when `NODE_ENV` is non-standard; use `NODE_ENV=production`.
+- Product/spec open questions remain: max length for `expenseTypeText`, future soft-delete/archive, and pagination timing.
