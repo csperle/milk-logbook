@@ -11,9 +11,10 @@ ENV HOME=/home/node
 ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
 ENV PATH=/home/node/.npm-global/bin:$PATH
 
-# Verzeichnisse anlegen und Rechte setzen
-RUN mkdir -p /home/node/.npm-global /home/node/.codex /workspace \
- && chown -R node:node /home/node /workspace
+# Verzeichnisse anlegen, Meine Custom Prompts in den Container kopieren und Rechte setzen
+RUN mkdir -p /home/node/.npm-global /home/node/.codex /workspace
+COPY .codex/prompts /home/node/.codex
+RUN chown -R node:node /home/node /workspace
 
 # ab hier als user node weiter, damit später auch Updates/Schreiben gehen
 USER node
