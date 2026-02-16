@@ -40,6 +40,7 @@ export function ExpenseTypesAdminClient() {
   const [isDeletingById, setIsDeletingById] = useState<Record<number, boolean>>(
     {},
   );
+  const [isReordering, setIsReordering] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const isSubmitDisabled = useMemo(() => {
@@ -156,6 +157,57 @@ export function ExpenseTypesAdminClient() {
     }
   }
 
+  async function persistOrder(nextExpenseTypes: ExpenseType[]) {
+    const orderedExpenseTypeIds = nextExpenseTypes.map((item) => item.id);
+    const response = await fetch("/api/expense-types/reorder", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderedExpenseTypeIds }),
+    });
+
+    if (!response.ok) {
+      throw new Error(await parseApiError(response));
+    }
+  }
+
+  async function handleMove(expenseTypeId: number, direction: "up" | "down") {
+    setErrorMessage(null);
+
+    if (isReordering || isSubmitting) {
+      return;
+    }
+
+    const currentIndex = expenseTypes.findIndex((item) => item.id === expenseTypeId);
+    if (currentIndex < 0) {
+      return;
+    }
+
+    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+    if (targetIndex < 0 || targetIndex >= expenseTypes.length) {
+      return;
+    }
+
+    const nextExpenseTypes = [...expenseTypes];
+    const [moved] = nextExpenseTypes.splice(currentIndex, 1);
+    nextExpenseTypes.splice(targetIndex, 0, moved);
+
+    setExpenseTypes(nextExpenseTypes);
+    setIsReordering(true);
+
+    try {
+      await persistOrder(nextExpenseTypes);
+    } catch (error) {
+      setExpenseTypes(expenseTypes);
+      if (error instanceof Error && error.message.length > 0) {
+        setErrorMessage(error.message);
+      } else {
+        setErrorMessage("Could not reorder expense types.");
+      }
+    } finally {
+      setIsReordering(false);
+    }
+  }
+
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-8 px-6 py-12">
       <header className="flex flex-col gap-2">
@@ -209,6 +261,10 @@ export function ExpenseTypesAdminClient() {
           <ul className="divide-y divide-zinc-200 rounded border border-zinc-200">
             {expenseTypes.map((expenseType) => {
               const isDeleting = Boolean(isDeletingById[expenseType.id]);
+              const index = expenseTypes.findIndex((item) => item.id === expenseType.id);
+              const isFirst = index === 0;
+              const isLast = index === expenseTypes.length - 1;
+              const isMoveDisabled = isDeleting || isReordering || isSubmitting;
 
               return (
                 <li
@@ -216,16 +272,38 @@ export function ExpenseTypesAdminClient() {
                   className="flex items-center justify-between gap-3 px-3 py-2"
                 >
                   <span>{expenseType.expenseTypeText}</span>
-                  <button
-                    type="button"
-                    disabled={isDeleting}
-                    onClick={() => {
-                      void handleDelete(expenseType);
-                    }}
-                    className="rounded border border-red-300 px-3 py-1 text-sm text-red-700 disabled:cursor-not-allowed disabled:text-zinc-400"
-                  >
-                    {isDeleting ? "Deleting..." : "Delete"}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isMoveDisabled || isFirst}
+                      onClick={() => {
+                        void handleMove(expenseType.id, "up");
+                      }}
+                      className="rounded border border-zinc-300 px-2 py-1 text-sm disabled:cursor-not-allowed disabled:text-zinc-400"
+                    >
+                      Up
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isMoveDisabled || isLast}
+                      onClick={() => {
+                        void handleMove(expenseType.id, "down");
+                      }}
+                      className="rounded border border-zinc-300 px-2 py-1 text-sm disabled:cursor-not-allowed disabled:text-zinc-400"
+                    >
+                      Down
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isDeleting || isReordering}
+                      onClick={() => {
+                        void handleDelete(expenseType);
+                      }}
+                      className="rounded border border-red-300 px-3 py-1 text-sm text-red-700 disabled:cursor-not-allowed disabled:text-zinc-400"
+                    >
+                      {isDeleting ? "Deleting..." : "Delete"}
+                    </button>
+                  </div>
                 </li>
               );
             })}

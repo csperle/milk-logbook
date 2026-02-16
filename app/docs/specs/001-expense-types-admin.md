@@ -10,6 +10,7 @@
 
   - Admin screen to view all expense types.
   - Create a new expense type with validated text input.
+  - Reorder expense types and persist that order.
   - Delete an existing expense type, subject to reference rules.
   - API endpoints for list/create/delete operations.
   - Deterministic validation and user-visible error states.
@@ -29,13 +30,18 @@
 
   - Route: admin expense types page.
   - The page displays:
-      - Table/list of existing expense types sorted by creation time ascending.
+      - Table/list of existing expense types sorted by persisted order.
       - Create form with one required text field: expenseTypeText.
+      - Reorder actions per row (move up/down).
       - Delete action per row.
   - Create behavior:
       - Submit is blocked when input is empty after trimming.
       - On success, the new expense type appears in the list without page reload.
       - On failure, a visible error message is shown.
+  - Reorder behavior:
+      - User can move an item up or down in the list.
+      - New order is persisted in the database.
+      - Subsequent reads use the persisted order.
   - Delete behavior:
       - User must confirm delete action.
       - If deletion is allowed, the item is removed from list.
@@ -46,6 +52,7 @@
   - GET /api/expense-types
       - Returns all expense types.
       - Response includes: id, expenseTypeText, createdAt, updatedAt.
+      - Items are ordered by persisted display order.
   - POST /api/expense-types
       - Creates one expense type.
       - Request body: expenseTypeText.
@@ -55,6 +62,13 @@
           - Trimmed length must be <= 100.
           - Must be unique case-insensitively after trimming.
       - Returns created object with server-generated fields.
+  - PATCH /api/expense-types/reorder
+      - Persists full expense-type order.
+      - Request body: orderedExpenseTypeIds (array of ids in desired order).
+      - Validation:
+          - Must be a non-empty array of positive integers.
+          - Must contain no duplicates.
+          - Must include every existing expense type id exactly once.
   - DELETE /api/expense-types/:id
       - Deletes one expense type by identifier.
       - If referenced by any accounting entry, deletion is rejected with conflict response and explicit reason.
@@ -103,6 +117,7 @@
   - [x] Whitespace-only values are rejected.
   - [x] Case-insensitive duplicates are rejected.
   - [x] On successful create, the new type is visible in the list immediately.
+  - [x] User can reorder expense types and persisted order is returned by list API.
   - [x] User can request deletion of an expense type from the list.
   - [x] Deletion of an unreferenced expense type succeeds.
   - [x] Deletion of a referenced expense type is blocked with explicit conflict feedback.
@@ -111,7 +126,6 @@
 
   ## 7) Open questions
 
-  - Should sorting be strictly by createdAt or alphabetically by expenseTypeText?
   - Should delete be permanently blocked when referenced, or should soft-delete/archive be introduced later?
   - Should additional metadata (e.g., isActive) be added now or deferred?
   - Should the API support pagination now or only when list size justifies it?

@@ -20,6 +20,7 @@ You can manage your expense categories in one place:
 - Open the app homepage and select **Open Expense Types Admin**
 - View all saved expense types
 - Add a new expense type
+- Reorder expense types
 - Delete an expense type (only if it is not already used by accounting entries)
 
 This helps keep expense entry categories consistent.
@@ -44,4 +45,3 @@ Planned next features include:
 - Automatic invoice data extraction
 - Yearly overview of entries
 - Annual profit-and-loss statement
-

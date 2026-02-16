@@ -12,6 +12,7 @@ export type ExpenseType = {
 type ExpenseTypeRow = {
   id: number;
   expense_type_text: string;
+  sort_order: number;
   created_at: string;
   updated_at: string;
 };
@@ -25,6 +26,10 @@ type DeleteExpenseTypeResult =
   | { ok: true }
   | { ok: false; reason: "not_found"; message: string }
   | { ok: false; reason: "conflict"; message: string };
+
+type ReorderExpenseTypesResult =
+  | { ok: true }
+  | { ok: false; reason: "validation"; field: "orderedExpenseTypeIds"; message: string };
 
 function normalizeExpenseTypeText(value: string): string {
   return value.trim().toLowerCase();
@@ -44,9 +49,9 @@ export function listExpenseTypes(): ExpenseType[] {
   const rows = db
     .prepare(
       `
-        SELECT id, expense_type_text, created_at, updated_at
+        SELECT id, expense_type_text, sort_order, created_at, updated_at
         FROM expense_types
-        ORDER BY created_at ASC, id ASC
+        ORDER BY sort_order ASC, id ASC
       `,
     )
     .all() as ExpenseTypeRow[];
@@ -78,6 +83,14 @@ export function createExpenseType(rawText: string): CreateExpenseTypeResult {
 
   const now = new Date().toISOString();
   const normalizedText = normalizeExpenseTypeText(trimmedText);
+  const nextSortOrderRow = db
+    .prepare(
+      `
+        SELECT COALESCE(MAX(sort_order), 0) + 1 as next_sort_order
+        FROM expense_types
+      `,
+    )
+    .get() as { next_sort_order: number };
 
   try {
     const insert = db.prepare(
@@ -85,17 +98,24 @@ export function createExpenseType(rawText: string): CreateExpenseTypeResult {
         INSERT INTO expense_types (
           expense_type_text,
           normalized_text,
+          sort_order,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?)
       `,
     );
-    const result = insert.run(trimmedText, normalizedText, now, now);
+    const result = insert.run(
+      trimmedText,
+      normalizedText,
+      nextSortOrderRow.next_sort_order,
+      now,
+      now,
+    );
 
     const createdRow = db
       .prepare(
         `
-          SELECT id, expense_type_text, created_at, updated_at
+          SELECT id, expense_type_text, sort_order, created_at, updated_at
           FROM expense_types
           WHERE id = ?
         `,
@@ -165,5 +185,86 @@ export function deleteExpenseTypeById(id: number): DeleteExpenseTypeResult {
   }
 
   db.prepare("DELETE FROM expense_types WHERE id = ?").run(id);
+  const remaining = db
+    .prepare(
+      `
+        SELECT id
+        FROM expense_types
+        ORDER BY sort_order ASC, id ASC
+      `,
+    )
+    .all() as Array<{ id: number }>;
+  const updateSortOrder = db.prepare(
+    "UPDATE expense_types SET sort_order = ? WHERE id = ?",
+  );
+  const resequenceSortOrder = db.transaction((rows: Array<{ id: number }>) => {
+    rows.forEach((row, index) => {
+      updateSortOrder.run(index + 1, row.id);
+    });
+  });
+  resequenceSortOrder(remaining);
+  return { ok: true };
+}
+
+export function reorderExpenseTypes(
+  orderedExpenseTypeIds: number[],
+): ReorderExpenseTypesResult {
+  const db = getDb();
+
+  if (orderedExpenseTypeIds.length < 1) {
+    return {
+      ok: false,
+      reason: "validation",
+      field: "orderedExpenseTypeIds",
+      message: "orderedExpenseTypeIds must be a non-empty array.",
+    };
+  }
+
+  const uniqueIds = new Set(orderedExpenseTypeIds);
+  if (uniqueIds.size !== orderedExpenseTypeIds.length) {
+    return {
+      ok: false,
+      reason: "validation",
+      field: "orderedExpenseTypeIds",
+      message: "orderedExpenseTypeIds must not contain duplicates.",
+    };
+  }
+
+  const existingRows = db
+    .prepare("SELECT id FROM expense_types ORDER BY sort_order ASC, id ASC")
+    .all() as Array<{ id: number }>;
+  const existingIds = existingRows.map((row) => row.id);
+
+  if (existingIds.length !== orderedExpenseTypeIds.length) {
+    return {
+      ok: false,
+      reason: "validation",
+      field: "orderedExpenseTypeIds",
+      message: "orderedExpenseTypeIds must include every expense type exactly once.",
+    };
+  }
+
+  const existingIdSet = new Set(existingIds);
+  const hasUnknownId = orderedExpenseTypeIds.some((id) => !existingIdSet.has(id));
+  if (hasUnknownId) {
+    return {
+      ok: false,
+      reason: "validation",
+      field: "orderedExpenseTypeIds",
+      message: "orderedExpenseTypeIds contains an unknown expense type id.",
+    };
+  }
+
+  const updateSortOrder = db.prepare(
+    "UPDATE expense_types SET sort_order = ?, updated_at = ? WHERE id = ?",
+  );
+  const now = new Date().toISOString();
+  const reorderTx = db.transaction((ids: number[]) => {
+    ids.forEach((id, index) => {
+      updateSortOrder.run(index + 1, now, id);
+    });
+  });
+  reorderTx(orderedExpenseTypeIds);
+
   return { ok: true };
 }

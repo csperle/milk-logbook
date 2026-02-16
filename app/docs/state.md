@@ -11,7 +11,8 @@
 - SQLite persistence is implemented via `better-sqlite3` with local DB file `data/app.db`.
 - Expense type creation enforces trim/non-empty validation and case-insensitive uniqueness.
 - Expense type text length is validated with a max of 100 characters.
-- Expense type list is returned in stable order (`createdAt` ascending, then id).
+- Expense type order is persisted in the database and returned consistently by `GET /api/expense-types`.
+- Expense type admin UI supports reordering (move up/down) and persists changes via API.
 - Delete flow includes confirmation in UI and deterministic API statuses (`400/404/409/204`).
 - Deletion is blocked when an expense type is referenced by `accounting_entries.type_of_expense_id`.
 - API contract examples and local data reset workflow are documented in `README.md`.

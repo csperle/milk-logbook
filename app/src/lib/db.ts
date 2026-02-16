@@ -7,6 +7,51 @@ const dbPath = path.join(dataDir, "app.db");
 
 let dbInstance: Database.Database | null = null;
 
+function ensureExpenseTypeSortOrder(db: Database.Database): void {
+  const columns = db
+    .prepare("PRAGMA table_info(expense_types)")
+    .all() as Array<{ name: string }>;
+  const hasSortOrder = columns.some((column) => column.name === "sort_order");
+
+  if (!hasSortOrder) {
+    db.exec("ALTER TABLE expense_types ADD COLUMN sort_order INTEGER;");
+  }
+
+  const nullSortOrderCount = db
+    .prepare(
+      `
+        SELECT COUNT(*) as count
+        FROM expense_types
+        WHERE sort_order IS NULL
+      `,
+    )
+    .get() as { count: number };
+
+  if (hasSortOrder && nullSortOrderCount.count === 0) {
+    return;
+  }
+
+  const orderedExpenseTypes = db
+    .prepare(
+      `
+        SELECT id
+        FROM expense_types
+        ORDER BY created_at ASC, id ASC
+      `,
+    )
+    .all() as Array<{ id: number }>;
+
+  const updateSortOrder = db.prepare(
+    "UPDATE expense_types SET sort_order = ? WHERE id = ?",
+  );
+  const fillSortOrder = db.transaction((rows: Array<{ id: number }>) => {
+    rows.forEach((row, index) => {
+      updateSortOrder.run(index + 1, row.id);
+    });
+  });
+  fillSortOrder(orderedExpenseTypes);
+}
+
 function initializeSchema(db: Database.Database): void {
   db.exec(`
     PRAGMA foreign_keys = ON;
@@ -15,6 +60,7 @@ function initializeSchema(db: Database.Database): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       expense_type_text TEXT NOT NULL,
       normalized_text TEXT NOT NULL UNIQUE,
+      sort_order INTEGER NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -27,6 +73,8 @@ function initializeSchema(db: Database.Database): void {
         ON DELETE RESTRICT
     );
   `);
+
+  ensureExpenseTypeSortOrder(db);
 }
 
 export function getDb(): Database.Database {
