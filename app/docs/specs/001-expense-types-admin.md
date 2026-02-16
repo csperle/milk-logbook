@@ -52,6 +52,7 @@
       - Validation:
           - Required.
           - Trimmed length must be >= 1.
+          - Trimmed length must be <= 100.
           - Must be unique case-insensitively after trimming.
       - Returns created object with server-generated fields.
   - DELETE /api/expense-types/:id
@@ -78,6 +79,7 @@
 
   - Uniqueness: normalized expenseTypeText must be unique (trimmed, case-insensitive).
   - Non-empty invariant: expenseTypeText cannot be blank after trimming.
+  - Maximum length: expenseTypeText must be at most 100 characters after trimming.
 
   ### Related model dependency
 
@@ -96,20 +98,19 @@
 
   ## 6) Acceptance criteria (checkboxes)
 
-  - [ ] Admin page displays existing expense types with stable ordering.
-  - [ ] User can create a new expense type with non-empty text.
-  - [ ] Whitespace-only values are rejected.
-  - [ ] Case-insensitive duplicates are rejected.
-  - [ ] On successful create, the new type is visible in the list immediately.
-  - [ ] User can request deletion of an expense type from the list.
-  - [ ] Deletion of an unreferenced expense type succeeds.
-  - [ ] Deletion of a referenced expense type is blocked with explicit conflict feedback.
-  - [ ] API returns deterministic status codes for success, validation error, conflict, and not found.
-  - [ ] No other domain behavior (invoice upload, extraction, P&L) is changed by this feature.
+  - [x] Admin page displays existing expense types with stable ordering.
+  - [x] User can create a new expense type with non-empty text.
+  - [x] Whitespace-only values are rejected.
+  - [x] Case-insensitive duplicates are rejected.
+  - [x] On successful create, the new type is visible in the list immediately.
+  - [x] User can request deletion of an expense type from the list.
+  - [x] Deletion of an unreferenced expense type succeeds.
+  - [x] Deletion of a referenced expense type is blocked with explicit conflict feedback.
+  - [x] API returns deterministic status codes for success, validation error, conflict, and not found.
+  - [x] No other domain behavior (invoice upload, extraction, P&L) is changed by this feature.
 
   ## 7) Open questions
 
-  - Should expenseTypeText have a maximum length, and if yes, what exact limit?
   - Should sorting be strictly by createdAt or alphabetically by expenseTypeText?
   - Should delete be permanently blocked when referenced, or should soft-delete/archive be introduced later?
   - Should additional metadata (e.g., isActive) be added now or deferred?

@@ -10,6 +10,7 @@
 - API endpoints exist: `GET /api/expense-types`, `POST /api/expense-types`, `DELETE /api/expense-types/:id`.
 - SQLite persistence is implemented via `better-sqlite3` with local DB file `data/app.db`.
 - Expense type creation enforces trim/non-empty validation and case-insensitive uniqueness.
+- Expense type text length is validated with a max of 100 characters.
 - Expense type list is returned in stable order (`createdAt` ascending, then id).
 - Delete flow includes confirmation in UI and deterministic API statuses (`400/404/409/204`).
 - Deletion is blocked when an expense type is referenced by `accounting_entries.type_of_expense_id`.
@@ -25,4 +26,4 @@
 - Build: `npm run build`
 
 ## Known issues / open questions
-- Product/spec open questions remain: max length for `expenseTypeText`, future soft-delete/archive, and pagination timing.
+- Product/spec open questions remain: future soft-delete/archive and pagination timing.

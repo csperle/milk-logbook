@@ -1,5 +1,7 @@
 import { getDb } from "@/lib/db";
 
+export const MAX_EXPENSE_TYPE_TEXT_LENGTH = 100;
+
 export type ExpenseType = {
   id: number;
   expenseTypeText: string;
@@ -62,6 +64,15 @@ export function createExpenseType(rawText: string): CreateExpenseTypeResult {
       reason: "validation",
       field: "expenseTypeText",
       message: "Expense type text is required.",
+    };
+  }
+
+  if (trimmedText.length > MAX_EXPENSE_TYPE_TEXT_LENGTH) {
+    return {
+      ok: false,
+      reason: "validation",
+      field: "expenseTypeText",
+      message: `Expense type text must be at most ${MAX_EXPENSE_TYPE_TEXT_LENGTH} characters.`,
     };
   }
 

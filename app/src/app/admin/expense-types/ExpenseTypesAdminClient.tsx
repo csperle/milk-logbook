@@ -17,6 +17,8 @@ type ApiError = {
   };
 };
 
+const MAX_EXPENSE_TYPE_TEXT_LENGTH = 100;
+
 async function parseApiError(response: Response): Promise<string> {
   try {
     const payload = (await response.json()) as ApiError;
@@ -41,7 +43,12 @@ export function ExpenseTypesAdminClient() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const isSubmitDisabled = useMemo(() => {
-    return isSubmitting || expenseTypeText.trim().length < 1;
+    const trimmedLength = expenseTypeText.trim().length;
+    return (
+      isSubmitting ||
+      trimmedLength < 1 ||
+      trimmedLength > MAX_EXPENSE_TYPE_TEXT_LENGTH
+    );
   }, [expenseTypeText, isSubmitting]);
 
   useEffect(() => {
@@ -83,6 +90,13 @@ export function ExpenseTypesAdminClient() {
 
     if (expenseTypeText.trim().length < 1) {
       setErrorMessage("Expense type text is required.");
+      return;
+    }
+
+    if (expenseTypeText.trim().length > MAX_EXPENSE_TYPE_TEXT_LENGTH) {
+      setErrorMessage(
+        `Expense type text must be at most ${MAX_EXPENSE_TYPE_TEXT_LENGTH} characters.`,
+      );
       return;
     }
 
@@ -162,6 +176,7 @@ export function ExpenseTypesAdminClient() {
             type="text"
             value={expenseTypeText}
             onChange={(event) => setExpenseTypeText(event.target.value)}
+            maxLength={MAX_EXPENSE_TYPE_TEXT_LENGTH}
             className="w-full rounded border border-zinc-300 px-3 py-2"
             placeholder="e.g. Office Supplies"
           />
