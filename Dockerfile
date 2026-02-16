@@ -13,7 +13,7 @@ ENV PATH=/home/node/.npm-global/bin:$PATH
 
 # Verzeichnisse anlegen, Meine Custom Prompts in den Container kopieren und Rechte setzen
 RUN mkdir -p /home/node/.npm-global /home/node/.codex /workspace
-COPY .codex/prompts /home/node/.codex
+COPY .codex/prompts /home/node/.codex/prompts
 RUN chown -R node:node /home/node /workspace
 
 # ab hier als user node weiter, damit später auch Updates/Schreiben gehen

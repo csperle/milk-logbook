@@ -7,14 +7,13 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=development
       - HOME=/home/node
       - NPM_CONFIG_PREFIX=/home/node/.npm-global
       - PATH=/home/node/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     volumes:
       - ./:/workspace
       - npm_cache:/home/node/.npm
-    command: bash -lc "npm install && npm run dev -- --hostname 0.0.0.0 --port 3000"
+    command: bash -lc "npm ci && npm run dev -- --hostname 0.0.0.0 --port 3000"
   
   codex:
     build: .
@@ -22,13 +21,12 @@ services:
     user: "node"
     working_dir: /workspace/app
     environment:
-      - NODE_ENV=development
       - HOME=/home/node
       - NPM_CONFIG_PREFIX=/home/node/.npm-global
       - PATH=/home/node/.npm-global/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     volumes:
       - ./:/workspace
-      - codex_config:/home/node/.codex
+      - codex_config:/home/node/.codex/state
       - npm_cache:/home/node/.npm
     tty: true
     stdin_open: true
