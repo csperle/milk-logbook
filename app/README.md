@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Bookkeeping App
 
-## Getting Started
+This application helps sole proprietors keep bookkeeping simple and organized.
 
-First, run the development server:
+## What this app does
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+The app is designed for a simple yearly profit-and-loss workflow:
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Track business entries as income or expenses
+- Keep records separated per company
+- Organize data by year
+- Prepare annual profit-and-loss summaries
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Current features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Expense Types Management
 
-## Learn More
+You can manage your expense categories in one place:
 
-To learn more about Next.js, take a look at the following resources:
+- Open the app homepage and select **Open Expense Types Admin**
+- View all saved expense types
+- Add a new expense type
+- Delete an expense type (only if it is not already used by accounting entries)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+This helps keep expense entry categories consistent.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## How to use
 
-## Deploy on Vercel
+1. Open the homepage.
+2. Go to **Expense Types Admin**.
+3. Add the expense types you want to use (for example: Travel, Insurance, Office Supplies).
+4. Remove types that are no longer needed and not in use.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Data and storage
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Your data is stored locally on this machine.
+- Expense type data is kept in the local application database.
+
+## What comes next
+
+Planned next features include:
+
+- Invoice upload
+- Automatic invoice data extraction
+- Yearly overview of entries
+- Annual profit-and-loss statement
+

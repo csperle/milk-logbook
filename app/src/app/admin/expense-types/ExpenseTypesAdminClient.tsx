@@ -61,7 +61,12 @@ export function ExpenseTypesAdminClient() {
 
         const payload = (await response.json()) as ExpenseType[];
         setExpenseTypes(payload);
+        setErrorMessage(null);
       } catch {
+        if (controller.signal.aborted) {
+          return;
+        }
+
         setErrorMessage("Could not load expense types.");
       } finally {
         setIsLoading(false);
