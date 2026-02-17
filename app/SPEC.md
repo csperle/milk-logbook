@@ -215,6 +215,7 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
 
 ## 8. Quality Requirements
 - No mandatory CI/CD or coverage threshold.
+- No unit tests or behavior/end-to-end tests are required for this project.
 - Practical quality gate for development:
   - Type checks via Next.js build
   - Lint checks via `npm run lint`

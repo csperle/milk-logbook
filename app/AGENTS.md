@@ -57,9 +57,8 @@
 - Prefer alias imports like `@/app/...` over long relative paths when crossing directories.
 
 ## Testing Guidelines
-- No test runner is currently configured.
-- For new features, add tests alongside the feature (for example `ComponentName.test.tsx`) once a runner is introduced.
-- Until tests are added, treat `npm run lint` and `npm run build` as required validation before opening a PR.
+- Unit tests and behavior/end-to-end tests are not required for this project.
+- Treat `npm run lint` and `npm run build` plus manual verification as required validation before opening a PR.
 
 ## Commit & Pull Request Guidelines
 - Existing history uses short, imperative-style summaries (example: `initial commit`).
@@ -73,6 +72,5 @@
 
 ## Definition of done
 - Feature matches acceptance criteria
-- Relevant tests added/updated
-- Build/lint/tests pass (if available)
+- Build/lint pass
 - docs/state.md reflects the current status when asked

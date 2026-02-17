@@ -20,6 +20,7 @@
   - Editing/renaming expense types (not included in this feature).
   - Bulk import/export of expense types.
   - Authentication/authorization model.
+  - Unit tests and behavior/end-to-end tests (not required for this project).
   - Expense entry creation UI.
   - Invoice upload and AI extraction.
   - Yearly overview and P&L reporting.

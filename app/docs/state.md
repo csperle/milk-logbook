@@ -19,9 +19,8 @@
 
 ## What remains
 - Implement next planned features (invoice upload/extraction/review/save, yearly overview, P&L).
-- Introduce a proper test runner and automated tests for API + UI behavior.
 
-## How to run (dev/tests)
+## How to run (dev/validation)
 - Dev server: `npm run dev`
 - Lint: `npm run lint`
 - Build: `npm run build`
