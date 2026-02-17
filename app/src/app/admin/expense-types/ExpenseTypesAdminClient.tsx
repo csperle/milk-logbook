@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
 
 type ExpenseType = {
   id: number;
@@ -18,6 +18,9 @@ type ApiError = {
 };
 
 const MAX_EXPENSE_TYPE_TEXT_LENGTH = 100;
+const DRAG_DROP_DATA_TYPE = "text/plain";
+
+type DropPosition = "before" | "after";
 
 async function parseApiError(response: Response): Promise<string> {
   try {
@@ -42,6 +45,13 @@ export function ExpenseTypesAdminClient() {
   );
   const [isReordering, setIsReordering] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [draggedExpenseTypeId, setDraggedExpenseTypeId] = useState<number | null>(
+    null,
+  );
+  const [dragOverExpenseTypeId, setDragOverExpenseTypeId] = useState<number | null>(
+    null,
+  );
+  const [dropPosition, setDropPosition] = useState<DropPosition | null>(null);
 
   const isSubmitDisabled = useMemo(() => {
     const trimmedLength = expenseTypeText.trim().length;
@@ -170,26 +180,110 @@ export function ExpenseTypesAdminClient() {
     }
   }
 
-  async function handleMove(expenseTypeId: number, direction: "up" | "down") {
+  function cleanupDragState() {
+    setDraggedExpenseTypeId(null);
+    setDragOverExpenseTypeId(null);
+    setDropPosition(null);
+  }
+
+  function getDropPosition(
+    event: DragEvent<HTMLLIElement>,
+    targetElement: HTMLLIElement,
+  ): DropPosition {
+    const rect = targetElement.getBoundingClientRect();
+    const isTopHalf = event.clientY < rect.top + rect.height / 2;
+    return isTopHalf ? "before" : "after";
+  }
+
+  function buildReorderedExpenseTypes(
+    currentExpenseTypes: ExpenseType[],
+    draggedId: number,
+    targetId: number,
+    position: DropPosition,
+  ): ExpenseType[] | null {
+    const fromIndex = currentExpenseTypes.findIndex((item) => item.id === draggedId);
+    const targetIndex = currentExpenseTypes.findIndex((item) => item.id === targetId);
+    if (fromIndex < 0 || targetIndex < 0) {
+      return null;
+    }
+
+    let destinationIndex = targetIndex + (position === "after" ? 1 : 0);
+    if (destinationIndex > fromIndex) {
+      destinationIndex -= 1;
+    }
+    if (destinationIndex === fromIndex) {
+      return null;
+    }
+
+    const nextExpenseTypes = [...currentExpenseTypes];
+    const [movedExpenseType] = nextExpenseTypes.splice(fromIndex, 1);
+    nextExpenseTypes.splice(destinationIndex, 0, movedExpenseType);
+    return nextExpenseTypes;
+  }
+
+  function handleDragStart(
+    event: DragEvent<HTMLButtonElement>,
+    expenseTypeId: number,
+  ) {
+    if (isReordering || isSubmitting || Boolean(isDeletingById[expenseTypeId])) {
+      event.preventDefault();
+      return;
+    }
+
     setErrorMessage(null);
+    setDraggedExpenseTypeId(expenseTypeId);
+    setDragOverExpenseTypeId(null);
+    setDropPosition(null);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData(DRAG_DROP_DATA_TYPE, String(expenseTypeId));
+  }
 
-    if (isReordering || isSubmitting) {
+  function handleDragOver(event: DragEvent<HTMLLIElement>, targetExpenseTypeId: number) {
+    if (isReordering || draggedExpenseTypeId === null) {
+      return;
+    }
+    if (draggedExpenseTypeId === targetExpenseTypeId) {
       return;
     }
 
-    const currentIndex = expenseTypes.findIndex((item) => item.id === expenseTypeId);
-    if (currentIndex < 0) {
+    event.preventDefault();
+    const targetElement = event.currentTarget;
+    const nextDropPosition = getDropPosition(event, targetElement);
+    setDragOverExpenseTypeId(targetExpenseTypeId);
+    setDropPosition(nextDropPosition);
+    event.dataTransfer.dropEffect = "move";
+  }
+
+  async function handleDrop(event: DragEvent<HTMLLIElement>, targetExpenseTypeId: number) {
+    event.preventDefault();
+    if (isReordering) {
+      cleanupDragState();
       return;
     }
 
-    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= expenseTypes.length) {
+    const draggedId =
+      draggedExpenseTypeId ??
+      Number.parseInt(event.dataTransfer.getData(DRAG_DROP_DATA_TYPE), 10);
+    if (!Number.isInteger(draggedId) || draggedId < 1 || draggedId === targetExpenseTypeId) {
+      cleanupDragState();
       return;
     }
 
-    const nextExpenseTypes = [...expenseTypes];
-    const [moved] = nextExpenseTypes.splice(currentIndex, 1);
-    nextExpenseTypes.splice(targetIndex, 0, moved);
+    const targetElement = event.currentTarget;
+    const nextDropPosition = getDropPosition(event, targetElement);
+    const nextExpenseTypes = buildReorderedExpenseTypes(
+      expenseTypes,
+      draggedId,
+      targetExpenseTypeId,
+      nextDropPosition,
+    );
+    cleanupDragState();
+
+    if (!nextExpenseTypes) {
+      return;
+    }
+
+    const previousExpenseTypes = expenseTypes;
 
     setExpenseTypes(nextExpenseTypes);
     setIsReordering(true);
@@ -197,7 +291,7 @@ export function ExpenseTypesAdminClient() {
     try {
       await persistOrder(nextExpenseTypes);
     } catch (error) {
-      setExpenseTypes(expenseTypes);
+      setExpenseTypes(previousExpenseTypes);
       if (error instanceof Error && error.message.length > 0) {
         setErrorMessage(error.message);
       } else {
@@ -261,38 +355,44 @@ export function ExpenseTypesAdminClient() {
           <ul className="divide-y divide-zinc-200 rounded border border-zinc-200">
             {expenseTypes.map((expenseType) => {
               const isDeleting = Boolean(isDeletingById[expenseType.id]);
-              const index = expenseTypes.findIndex((item) => item.id === expenseType.id);
-              const isFirst = index === 0;
-              const isLast = index === expenseTypes.length - 1;
-              const isMoveDisabled = isDeleting || isReordering || isSubmitting;
+              const isDragDisabled = isDeleting || isReordering || isSubmitting;
+              const isBeingDragged = draggedExpenseTypeId === expenseType.id;
+              const isDropTarget = dragOverExpenseTypeId === expenseType.id;
+              const showDropBefore = isDropTarget && dropPosition === "before";
+              const showDropAfter = isDropTarget && dropPosition === "after";
 
               return (
                 <li
                   key={expenseType.id}
-                  className="flex items-center justify-between gap-3 px-3 py-2"
+                  onDragOver={(event) => handleDragOver(event, expenseType.id)}
+                  onDrop={(event) => {
+                    void handleDrop(event, expenseType.id);
+                  }}
+                  className={`flex items-center justify-between gap-3 px-3 py-2 ${
+                    isBeingDragged ? "opacity-60" : ""
+                  } ${showDropBefore ? "border-t-2 border-t-black" : ""} ${
+                    showDropAfter ? "border-b-2 border-b-black" : ""
+                  }`}
                 >
-                  <span>{expenseType.expenseTypeText}</span>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      draggable={!isDragDisabled}
+                      disabled={isDragDisabled}
+                      onDragStart={(event) => handleDragStart(event, expenseType.id)}
+                      onDragEnd={cleanupDragState}
+                      aria-label={`Drag ${expenseType.expenseTypeText} to reorder`}
+                      className="flex h-8 w-8 cursor-grab items-center justify-center rounded border border-zinc-300 bg-zinc-50 active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <span aria-hidden className="grid grid-cols-2 gap-0.5">
+                        {Array.from({ length: 6 }).map((_, index) => (
+                          <span key={index} className="h-1 w-1 rounded-full bg-zinc-500" />
+                        ))}
+                      </span>
+                    </button>
+                    <span>{expenseType.expenseTypeText}</span>
+                  </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={isMoveDisabled || isFirst}
-                      onClick={() => {
-                        void handleMove(expenseType.id, "up");
-                      }}
-                      className="rounded border border-zinc-300 px-2 py-1 text-sm disabled:cursor-not-allowed disabled:text-zinc-400"
-                    >
-                      Up
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isMoveDisabled || isLast}
-                      onClick={() => {
-                        void handleMove(expenseType.id, "down");
-                      }}
-                      className="rounded border border-zinc-300 px-2 py-1 text-sm disabled:cursor-not-allowed disabled:text-zinc-400"
-                    >
-                      Down
-                    </button>
                     <button
                       type="button"
                       disabled={isDeleting || isReordering}
