@@ -52,9 +52,28 @@ function ensureExpenseTypeSortOrder(db: Database.Database): void {
   fillSortOrder(orderedExpenseTypes);
 }
 
+function ensureAccountingEntriesCompanyColumn(db: Database.Database): void {
+  const columns = db
+    .prepare("PRAGMA table_info(accounting_entries)")
+    .all() as Array<{ name: string }>;
+  const hasCompanyId = columns.some((column) => column.name === "company_id");
+
+  if (!hasCompanyId) {
+    db.exec("ALTER TABLE accounting_entries ADD COLUMN company_id INTEGER;");
+  }
+}
+
 function initializeSchema(db: Database.Database): void {
   db.exec(`
     PRAGMA foreign_keys = ON;
+
+    CREATE TABLE IF NOT EXISTS companies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      normalized_name TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
 
     CREATE TABLE IF NOT EXISTS expense_types (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,13 +87,18 @@ function initializeSchema(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS accounting_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       type_of_expense_id INTEGER,
+      company_id INTEGER,
       FOREIGN KEY (type_of_expense_id)
         REFERENCES expense_types (id)
+        ON DELETE RESTRICT,
+      FOREIGN KEY (company_id)
+        REFERENCES companies (id)
         ON DELETE RESTRICT
     );
   `);
 
   ensureExpenseTypeSortOrder(db);
+  ensureAccountingEntriesCompanyColumn(db);
 }
 
 export function getDb(): Database.Database {

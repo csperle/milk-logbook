@@ -32,10 +32,16 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
 - Current app structure:
   - `src/app/layout.tsx`
   - `src/app/page.tsx`
+  - `src/app/admin/companies/page.tsx`
   - `src/app/admin/expense-types/page.tsx`
+  - `src/app/api/companies/route.ts`
+  - `src/app/api/companies/[id]/route.ts`
   - `src/app/api/expense-types/route.ts`
   - `src/app/api/expense-types/[id]/route.ts`
   - `src/app/globals.css`
+  - `src/lib/active-company.ts`
+  - `src/lib/active-company-guard.ts`
+  - `src/lib/companies-repo.ts`
   - `src/lib/db.ts`
   - `src/lib/expense-types-repo.ts`
   - `public/` for static assets
@@ -51,6 +57,9 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
 - Users can create and manage multiple companies.
 - Every accounting entry belongs to exactly one company.
 - Reporting and P&L are always filtered by selected company and year.
+- App navigation is blocked until a valid active company context exists.
+- If no companies exist, users are redirected to `/admin/companies` and prompted to create a company.
+- If companies exist but no active company is set, users are redirected to `/admin/companies` and prompted to select an active company.
 
 ### 4.2 Invoice PDF Upload
 - User can upload PDF files as either:
@@ -251,3 +260,14 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
 - Deterministic API statuses are in place for that slice: success, validation (`400`), duplicate/conflict (`409`), and not found (`404`).
 - Deletion integrity is enforced by explicit reference checks against `accounting_entries.type_of_expense_id`.
 - Expense type uniqueness is enforced case-insensitively and trim-insensitively using persisted normalization.
+
+### (2026-02-17)
+- Company Context Guard slice implemented.
+- Added companies persistence and API endpoints:
+  - `GET /api/companies`
+  - `POST /api/companies`
+  - `DELETE /api/companies/:id`
+- Active company context is persisted via cookie key `activeCompanyId`.
+- Guard behavior is enforced for non-company-admin routes; users are redirected to company admin when company setup/context is missing.
+- Added `/admin/companies` UI for create/list/delete and active company selection.
+- Added explicit warning guidance on `/admin/companies` when no company exists or no active company is selected.

@@ -47,12 +47,15 @@ Establish a mandatory active-company context for the app, and introduce minimal 
 - Company administration route: `/admin/companies`.
 - Active company is persisted in a browser cookie under one stable key (e.g. `activeCompanyId`).
 - Guard rules for all app routes except `/admin/companies`:
-  - If company count is `0`: redirect to `/admin/companies`.
-  - If company count is `>0` and no valid active company is persisted: redirect to `/admin/companies`.
-  - If persisted active company id does not exist in DB: treat as missing active company and redirect to `/admin/companies`.
+  - If company count is `0`: redirect to `/admin/companies?reason=no-companies`.
+  - If company count is `>0` and no valid active company is persisted: redirect to `/admin/companies?reason=no-active-company`.
+  - If persisted active company id does not exist in DB: treat as missing active company and redirect to `/admin/companies?reason=no-active-company`.
 - `/admin/companies` behavior:
   - Shows company list.
   - Allows create/delete.
+  - Shows a warning banner that explains why navigation is blocked and what action the user must take:
+    - no companies exist -> user must create at least one company
+    - no active company selected -> user must select an active company
   - Requires active-company selection immediately when at least one company exists and no valid active company is set.
   - If first company is created and it is the only company, it is auto-selected as active.
   - If active company is deleted:
@@ -89,18 +92,19 @@ Establish a mandatory active-company context for the app, and introduce minimal 
 - Multiple browser tabs with stale in-memory UI state: any tab with invalid active company must recover via guard rules on next navigation/load.
 
 ## 6) Acceptance criteria (checkboxes)
-- [ ] A user can create, list, and delete companies from `/admin/companies`.
-- [ ] Company creation enforces required trimmed non-empty name and max length 100.
-- [ ] Duplicate company names are rejected case-insensitively and trim-insensitively.
-- [ ] If no companies exist, any non-admin route redirects to `/admin/companies`.
-- [ ] If companies exist but no valid active company is persisted, any non-admin route redirects to `/admin/companies`.
-- [ ] `/admin/companies` enforces immediate active-company selection when companies exist and none is validly selected.
-- [ ] Creating the first (and only) company auto-sets it as active.
-- [ ] Deleting the active company selects a deterministic fallback when possible; otherwise active company is cleared.
-- [ ] Persisted active company id that does not exist is treated as invalid and triggers re-selection.
-- [ ] `GET /api/companies`, `POST /api/companies`, and `DELETE /api/companies/:id` return deterministic status codes as specified.
-- [ ] `DELETE /api/companies/:id` returns `409 Conflict` when the company is referenced by domain records.
-- [ ] Company names are never reusable once created, including after potential future soft-delete.
+- [x] A user can create, list, and delete companies from `/admin/companies`.
+- [x] Company creation enforces required trimmed non-empty name and max length 100.
+- [x] Duplicate company names are rejected case-insensitively and trim-insensitively.
+- [x] If no companies exist, any non-admin route redirects to `/admin/companies`.
+- [x] If companies exist but no valid active company is persisted, any non-admin route redirects to `/admin/companies`.
+- [x] `/admin/companies` enforces immediate active-company selection when companies exist and none is validly selected.
+- [x] Creating the first (and only) company auto-sets it as active.
+- [x] Deleting the active company selects a deterministic fallback when possible; otherwise active company is cleared.
+- [x] Persisted active company id that does not exist is treated as invalid and triggers re-selection.
+- [x] `GET /api/companies`, `POST /api/companies`, and `DELETE /api/companies/:id` return deterministic status codes as specified.
+- [x] `DELETE /api/companies/:id` returns `409 Conflict` when the company is referenced by domain records.
+- [x] Company names are never reusable once created, including after potential future soft-delete.
+- [x] `/admin/companies` shows explicit warning guidance when no company exists or no active company is selected, and the warning clears once the state is valid.
 
 ## 7) Open questions
 - None for this slice.
