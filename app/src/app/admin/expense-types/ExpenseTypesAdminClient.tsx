@@ -1,6 +1,7 @@
 "use client";
 
 import { DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 type ExpenseType = {
   id: number;
@@ -304,11 +305,21 @@ export function ExpenseTypesAdminClient() {
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-8 px-6 py-12">
-      <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold">Expense Types Admin</h1>
-        <p className="text-sm text-zinc-600">
-          Manage canonical expense types used by expense entries.
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-semibold">Expense Types Admin</h1>
+          <p className="text-sm text-zinc-600">
+            Manage canonical expense types used by expense entries.
+          </p>
+        </div>
+        <div className="shrink-0">
+          <Link
+            href="/"
+            className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
+          >
+            Back to main page
+          </Link>
+        </div>
       </header>
 
       <form onSubmit={handleCreate} className="flex flex-col gap-3">
