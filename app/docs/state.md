@@ -2,7 +2,7 @@
 
 - Last updated date: 2026-02-17
 - Current goal: implement the next small vertical slice: Invoice PDF Upload + Local Storage (without AI extraction yet).
-- Active feature spec(s): `docs/specs/002-company-context-guard.md`.
+- Active feature spec(s): `docs/specs/003-invoice-pdf-upload-local-storage.md`.
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -26,13 +26,17 @@
 - API contract examples and local data reset workflow are documented in `README.md`.
 
 ## What remains
-- Implement next planned features:
+  - Implement next planned features:
   - invoice PDF upload + local file storage (no AI extraction in this slice):
     - PDF-only upload endpoint
+    - max file size 10 MB with `413` on limit exceed
     - local `upload/` persistence
     - persisted upload metadata (original filename, stored filename, upload timestamp, company context)
+    - keep `stored_path` internal (do not expose in success response)
+    - no-orphan guarantee on failures (rollback/cleanup for file/DB partial failures)
     - simple upload UI with success/error states
     - active-company guard enforcement on upload page
+    - defer list/read endpoint (`GET /api/uploads`) to a later slice
   - AI extraction/review/save on top of uploaded files
   - yearly overview
   - annual P&L
