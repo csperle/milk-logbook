@@ -1,8 +1,8 @@
 # Project State
 
-- Last updated date: 2026-02-16
-- Current goal: complete and stabilize the first vertical slice: Expense Type Administration.
-- Active feature spec(s): `docs/specs/001-expense-types-admin.md`.
+- Last updated date: 2026-02-17
+- Current goal: implement the next vertical slice: Company Context Guard.
+- Active feature spec(s): `docs/specs/002-company-context-guard.md`.
 
 ## What is implemented
 - Expense type admin UI is available at `/admin/expense-types`.
@@ -18,7 +18,12 @@
 - API contract examples and local data reset workflow are documented in `README.md`.
 
 ## What remains
-- Implement next planned features (invoice upload/extraction/review/save, yearly overview, P&L).
+- Implement company management and mandatory active-company context guard per `002-company-context-guard`:
+  - Companies CRUD (list/create/delete) with deterministic API statuses
+  - `/admin/companies` page with active-company selection
+  - Cookie-based `activeCompanyId` persistence and guard routing behavior
+  - Invalid/missing active-company recovery and fallback selection behavior
+- After this slice: invoice upload/extraction/review/save, yearly overview, P&L.
 
 ## How to run (dev/validation)
 - Dev server: `npm run dev`
@@ -26,4 +31,4 @@
 - Build: `npm run build`
 
 ## Known issues / open questions
-- Product/spec open questions remain: future soft-delete/archive and pagination timing.
+- Product/spec open questions remain outside this slice: future soft-delete/archive and pagination timing.
