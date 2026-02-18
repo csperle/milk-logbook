@@ -1,8 +1,8 @@
 # Project State
 
 - Last updated date: 2026-02-18
-- Current goal: implement the next small vertical slice: AI extraction + review/save flow on top of uploaded PDFs.
-- Active feature spec(s): `docs/specs/003-invoice-pdf-upload-local-storage.md` (implemented; complete for in-scope items).
+- Current goal: implement the next small vertical slice: create booking entries with placeholder values directly after PDF upload and list entries.
+- Active feature spec(s): `docs/specs/004-booking-entry-from-upload-placeholder.md`.
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -42,7 +42,8 @@
 
 ## What remains
   - Implement next planned features:
-  - AI extraction/review/save on top of uploaded files
+  - booking-entry placeholder creation from upload + entries list (`004`)
+  - AI extraction/review/save on top of uploaded files (after `004`)
   - (deferred) list/read endpoint for uploads: `GET /api/uploads`
   - yearly overview
   - annual P&L
@@ -53,4 +54,4 @@
 - Build: `npm run build`
 
 ## Known issues / open questions
-- Product/spec open questions remain outside this slice: future soft-delete/archive and pagination timing.
+- Product/spec open questions remain outside the active slice: future soft-delete/archive and pagination timing.
