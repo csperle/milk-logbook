@@ -1,5 +1,7 @@
 # 003-invoice-pdf-upload-local-storage
 
+  - Status: Implemented (2026-02-18)
+
   ## 1) Goal
 
   Implement a small vertical slice that allows a user to upload invoice PDFs (classified as income or expense), persist the file locally,
@@ -151,27 +153,27 @@
 
   ## 6) Acceptance criteria (checkboxes)
 
-  - [ ] /upload route exists and is reachable when active company context is valid.
-  - [ ] /upload redirects to /admin/companies when no company exists.
-  - [ ] /upload redirects to /admin/companies when active company is missing/invalid.
-  - [ ] User can submit a PDF with entryType=income and receive 201.
-  - [ ] User can submit a PDF with entryType=expense and receive 201.
-  - [ ] Uploaded PDF is persisted in local upload/ directory.
-  - [ ] Files larger than `10,485,760` bytes are rejected with `413`.
-  - [ ] Metadata record is persisted in invoice_uploads with correct company_id, entry_type, original_filename, stored_filename, and
+  - [x] /upload route exists and is reachable when active company context is valid.
+  - [x] /upload redirects to /admin/companies when no company exists.
+  - [x] /upload redirects to /admin/companies when active company is missing/invalid.
+  - [x] User can submit a PDF with entryType=income and receive 201.
+  - [x] User can submit a PDF with entryType=expense and receive 201.
+  - [x] Uploaded PDF is persisted in local upload/ directory.
+  - [x] Files larger than `10,485,760` bytes are rejected with `413`.
+  - [x] Metadata record is persisted in invoice_uploads with correct company_id, entry_type, original_filename, stored_filename, and
     uploaded_at.
-  - [ ] POST /api/uploads rejects non-PDF uploads with 415.
-  - [ ] POST /api/uploads rejects invalid payloads with 400.
-  - [ ] POST /api/uploads rejects missing/invalid company context with 409.
-  - [ ] PDF validation requires `%PDF-` signature and (`application/pdf` MIME or `.pdf` extension); otherwise response is 415.
-  - [ ] Upload API errors use `{ error: { code, message } }` with defined endpoint error codes.
-  - [ ] original_filename is stored only as metadata and does not affect stored_path.
-  - [ ] original_filename is preserved for future download naming.
-  - [ ] POST /api/uploads success response does not expose `stored_path`.
-  - [ ] On failed upload request, no orphan file and no orphan DB row remain.
-  - [ ] DELETE /api/companies/:id returns 409 when company has related invoice_uploads.
-  - [ ] UI shows clear success and error states based on API responses.
-  - [ ] No AI extraction or accounting-entry creation is performed in this slice.
+  - [x] POST /api/uploads rejects non-PDF uploads with 415.
+  - [x] POST /api/uploads rejects invalid payloads with 400.
+  - [x] POST /api/uploads rejects missing/invalid company context with 409.
+  - [x] PDF validation requires `%PDF-` signature and (`application/pdf` MIME or `.pdf` extension); otherwise response is 415.
+  - [x] Upload API errors use `{ error: { code, message } }` with defined endpoint error codes.
+  - [x] original_filename is stored only as metadata and does not affect stored_path.
+  - [x] original_filename is preserved for future download naming.
+  - [x] POST /api/uploads success response does not expose `stored_path`.
+  - [x] On failed upload request, no orphan file and no orphan DB row remain.
+  - [x] DELETE /api/companies/:id returns 409 when company has related invoice_uploads.
+  - [x] UI shows clear success and error states based on API responses.
+  - [x] No AI extraction or accounting-entry creation is performed in this slice.
 
   ## 7) Open questions
 

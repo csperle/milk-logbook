@@ -95,6 +95,19 @@ function initializeSchema(db: Database.Database): void {
         REFERENCES companies (id)
         ON DELETE RESTRICT
     );
+
+    CREATE TABLE IF NOT EXISTS invoice_uploads (
+      id TEXT PRIMARY KEY,
+      company_id INTEGER NOT NULL,
+      entry_type TEXT NOT NULL CHECK(entry_type IN ('income', 'expense')),
+      original_filename TEXT NOT NULL,
+      stored_filename TEXT NOT NULL UNIQUE,
+      stored_path TEXT NOT NULL,
+      uploaded_at TEXT NOT NULL,
+      FOREIGN KEY (company_id)
+        REFERENCES companies (id)
+        ON DELETE RESTRICT
+    );
   `);
 
   ensureExpenseTypeSortOrder(db);

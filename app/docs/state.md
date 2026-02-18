@@ -1,8 +1,8 @@
 # Project State
 
-- Last updated date: 2026-02-17
-- Current goal: implement the next small vertical slice: Invoice PDF Upload + Local Storage (without AI extraction yet).
-- Active feature spec(s): `docs/specs/003-invoice-pdf-upload-local-storage.md`.
+- Last updated date: 2026-02-18
+- Current goal: implement the next small vertical slice: AI extraction + review/save flow on top of uploaded PDFs.
+- Active feature spec(s): `docs/specs/003-invoice-pdf-upload-local-storage.md` (implemented; complete for in-scope items).
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -24,20 +24,26 @@
 - Delete flow includes confirmation in UI and deterministic API statuses (`400/404/409/204`).
 - Deletion is blocked when an expense type is referenced by `accounting_entries.type_of_expense_id`.
 - API contract examples and local data reset workflow are documented in `README.md`.
+- Invoice upload slice (`003-invoice-pdf-upload-local-storage`) is implemented.
+- Upload UI is available at `/upload` and is protected by active-company context guard.
+- Upload API endpoint exists: `POST /api/uploads`.
+- Upload endpoint enforces:
+  - `entryType` validation (`income` | `expense`)
+  - max file size `10,485,760` bytes with `413`
+  - PDF validation (`%PDF-` signature + MIME/extension rule)
+  - deterministic error payload shape `{ error: { code, message } }`
+- Local file persistence is implemented under project-root `upload/`.
+- Upload metadata is persisted in SQLite table `invoice_uploads`:
+  - `company_id`, `entry_type`, `original_filename`, `stored_filename`, `stored_path`, `uploaded_at`.
+- Stored filenames are UUID-based and opaque; original filenames are persisted for future user-facing download naming.
+- `stored_path` is persisted internally and not exposed in upload success responses.
+- No-orphan guarantee is implemented: file write first, DB insert second, with file cleanup on DB failure.
+- Company deletion now returns conflict (`409`) when the company is referenced by `invoice_uploads`.
 
 ## What remains
   - Implement next planned features:
-  - invoice PDF upload + local file storage (no AI extraction in this slice):
-    - PDF-only upload endpoint
-    - max file size 10 MB with `413` on limit exceed
-    - local `upload/` persistence
-    - persisted upload metadata (original filename, stored filename, upload timestamp, company context)
-    - keep `stored_path` internal (do not expose in success response)
-    - no-orphan guarantee on failures (rollback/cleanup for file/DB partial failures)
-    - simple upload UI with success/error states
-    - active-company guard enforcement on upload page
-    - defer list/read endpoint (`GET /api/uploads`) to a later slice
   - AI extraction/review/save on top of uploaded files
+  - (deferred) list/read endpoint for uploads: `GET /api/uploads`
   - yearly overview
   - annual P&L
 

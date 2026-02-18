@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { countInvoiceUploadsByCompanyId } from "@/lib/invoice-uploads-repo";
 
 export const MAX_COMPANY_NAME_LENGTH = 100;
 
@@ -150,6 +151,15 @@ export function deleteCompanyById(id: number): DeleteCompanyResult {
     .get(id) as { count: number };
 
   if (referenceRow.count > 0) {
+    return {
+      ok: false,
+      reason: "conflict",
+      message: "Company is referenced by domain records and cannot be deleted.",
+    };
+  }
+
+  const uploadReferenceCount = countInvoiceUploadsByCompanyId(id);
+  if (uploadReferenceCount > 0) {
     return {
       ok: false,
       reason: "conflict",
