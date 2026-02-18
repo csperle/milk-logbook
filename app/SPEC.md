@@ -67,10 +67,18 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
   - Expense invoice
 - Uploaded files must be persisted in a local `upload` folder.
 - Uploaded file metadata should be retained for traceability (original filename, stored filename, upload timestamp).
-- Stored file naming must be unique and based on accounting context.
-  - Required base pattern: `<documentNumber>_<year>.pdf`.
-  - If needed to guarantee uniqueness across companies/types, append stable segments such as `<entryType>` and `<companyId>`.
-  - Example: `15_2026_income_company-3.pdf`.
+- Stored file naming must be unique and opaque.
+  - `storedFilename` must be server-generated UUID-based naming (not derived from accounting fields or original filename).
+  - `originalFilename` must be persisted as metadata and used when the file is later downloaded or exported.
+- Upload validation rules:
+  - Maximum upload size is `10,485,760` bytes (10 MiB); larger payloads return `413`.
+  - PDF acceptance requires `%PDF-` signature and (`application/pdf` MIME or `.pdf` filename extension).
+- Upload API response contracts:
+  - Success (`201`) returns metadata only: `id`, `companyId`, `entryType`, `originalFilename`, `storedFilename`, `uploadedAt`.
+  - Error responses use JSON shape `{ error: { code, message } }` with deterministic endpoint codes.
+- No-orphan persistence guarantee for uploads:
+  - Write file first, then insert DB metadata.
+  - If DB insert fails, delete the just-written file before returning failure.
 
 ### 4.3 AI Data Extraction
 - For each uploaded PDF, call OpenAI to extract structured fields.
@@ -221,6 +229,7 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
 - Local file storage:
   - Store uploaded invoice PDFs under a dedicated `upload` folder.
   - Accounting entries must reference the stored file so the original document can be opened from the UI.
+  - Download responses should use persisted original filename metadata for user-facing download names.
 
 ## 8. Quality Requirements
 - No mandatory CI/CD or coverage threshold.
