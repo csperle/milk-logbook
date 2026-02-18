@@ -38,10 +38,11 @@ async function parseApiError(response: Response): Promise<string> {
 }
 
 export function UploadPageClient({ activeCompanyId, activeCompanyName }: Props) {
-  const [entryType, setEntryType] = useState<"income" | "expense">("income");
+  const [entryType, setEntryType] = useState<"income" | "expense">("expense");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<UploadResponse | null>(null);
+  const isExpense = entryType === "expense";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -111,33 +112,57 @@ export function UploadPageClient({ activeCompanyId, activeCompanyName }: Props) 
         ) : null}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded border p-4">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">Entry type</span>
-            <select
-              name="entryType"
-              value={entryType}
-              onChange={(event) => {
-                const nextValue = event.target.value;
-                if (nextValue === "income" || nextValue === "expense") {
-                  setEntryType(nextValue);
-                }
-              }}
-              className="rounded border border-zinc-300 px-3 py-2"
-            >
-              <option value="income">income</option>
-              <option value="expense">expense</option>
-            </select>
-          </label>
+          <div className="flex flex-wrap items-end gap-4">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium">Entry type</span>
+              <div className="inline-flex overflow-hidden rounded-md border border-zinc-300">
+                <button
+                  type="button"
+                  aria-pressed={isExpense}
+                  onClick={() => {
+                    setEntryType("expense");
+                  }}
+                  className={`px-4 py-2 text-sm font-medium transition-colors ${
+                    isExpense
+                      ? "bg-red-200 text-red-900"
+                      : "bg-red-50 text-red-700 hover:bg-red-100"
+                  }`}
+                >
+                  Expense
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={!isExpense}
+                  onClick={() => {
+                    setEntryType("income");
+                  }}
+                  className={`border-l border-zinc-300 px-4 py-2 text-sm font-medium transition-colors ${
+                    !isExpense
+                      ? "bg-emerald-200 text-emerald-900"
+                      : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                  }`}
+                >
+                  Income
+                </button>
+              </div>
+              <input
+                type="hidden"
+                name="entryType"
+                value={entryType}
+                readOnly
+              />
+            </label>
 
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">PDF file</span>
-            <input
-              name="file"
-              type="file"
-              accept="application/pdf,.pdf"
-              className="rounded border border-zinc-300 px-3 py-2"
-            />
-          </label>
+            <label className="min-w-[280px] flex-1 flex flex-col gap-1 text-sm">
+              <span className="font-medium">PDF file</span>
+              <input
+                name="file"
+                type="file"
+                accept="application/pdf,.pdf"
+                className="rounded border border-zinc-300 px-3 py-2"
+              />
+            </label>
+          </div>
 
           <button
             type="submit"
