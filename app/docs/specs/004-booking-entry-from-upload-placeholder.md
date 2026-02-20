@@ -38,8 +38,7 @@
   - amountGross: 0 (stored as integer cents/rappen).
   - amountNet: null.
   - amountTax: null.
-  - sourceFilePath: from upload stored_path.
-  - sourceOriginalFilename: from upload original_filename.
+  - uploadId: persisted link to `invoice_uploads.id`; file metadata is read from upload record.
   - extractionStatus: "pending".
 
   2. Nullability vs strict defaults:
@@ -164,8 +163,6 @@
   - amount_gross (not null, default 0)
   - amount_net (nullable)
   - amount_tax (nullable)
-  - source_file_path (not null)
-  - source_original_filename (not null)
   - extraction_status (not null, default "pending")
   - created_at, updated_at (not null)
 

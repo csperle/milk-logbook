@@ -63,6 +63,86 @@ function ensureAccountingEntriesCompanyColumn(db: Database.Database): void {
   }
 }
 
+function ensureAccountingEntriesColumns(db: Database.Database): void {
+  const columns = db
+    .prepare("PRAGMA table_info(accounting_entries)")
+    .all() as Array<{ name: string }>;
+  const columnNames = new Set(columns.map((column) => column.name));
+
+  if (!columnNames.has("document_number")) {
+    db.exec("ALTER TABLE accounting_entries ADD COLUMN document_number INTEGER;");
+  }
+
+  if (!columnNames.has("entry_type")) {
+    db.exec("ALTER TABLE accounting_entries ADD COLUMN entry_type TEXT;");
+  }
+
+  if (!columnNames.has("document_date")) {
+    db.exec("ALTER TABLE accounting_entries ADD COLUMN document_date TEXT;");
+  }
+
+  if (!columnNames.has("document_year")) {
+    db.exec("ALTER TABLE accounting_entries ADD COLUMN document_year INTEGER;");
+  }
+
+  if (!columnNames.has("payment_received_date")) {
+    db.exec("ALTER TABLE accounting_entries ADD COLUMN payment_received_date TEXT;");
+  }
+
+  if (!columnNames.has("counterparty_name")) {
+    db.exec("ALTER TABLE accounting_entries ADD COLUMN counterparty_name TEXT;");
+  }
+
+  if (!columnNames.has("booking_text")) {
+    db.exec("ALTER TABLE accounting_entries ADD COLUMN booking_text TEXT;");
+  }
+
+  if (!columnNames.has("amount_gross")) {
+    db.exec(
+      "ALTER TABLE accounting_entries ADD COLUMN amount_gross INTEGER NOT NULL DEFAULT 0;",
+    );
+  }
+
+  if (!columnNames.has("amount_net")) {
+    db.exec("ALTER TABLE accounting_entries ADD COLUMN amount_net INTEGER;");
+  }
+
+  if (!columnNames.has("amount_tax")) {
+    db.exec("ALTER TABLE accounting_entries ADD COLUMN amount_tax INTEGER;");
+  }
+
+  if (!columnNames.has("upload_id")) {
+    db.exec("ALTER TABLE accounting_entries ADD COLUMN upload_id TEXT;");
+  }
+
+  if (!columnNames.has("extraction_status")) {
+    db.exec(
+      "ALTER TABLE accounting_entries ADD COLUMN extraction_status TEXT NOT NULL DEFAULT 'pending';",
+    );
+  }
+
+  if (!columnNames.has("created_at")) {
+    db.exec("ALTER TABLE accounting_entries ADD COLUMN created_at TEXT;");
+  }
+
+  if (!columnNames.has("updated_at")) {
+    db.exec("ALTER TABLE accounting_entries ADD COLUMN updated_at TEXT;");
+  }
+
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS accounting_entries_sequence_unique
+    ON accounting_entries (company_id, document_year, entry_type, document_number)
+    WHERE company_id IS NOT NULL
+      AND document_year IS NOT NULL
+      AND entry_type IS NOT NULL
+      AND document_number IS NOT NULL;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS accounting_entries_upload_id_unique
+    ON accounting_entries (upload_id)
+    WHERE upload_id IS NOT NULL;
+  `);
+}
+
 function initializeSchema(db: Database.Database): void {
   db.exec(`
     PRAGMA foreign_keys = ON;
@@ -84,18 +164,6 @@ function initializeSchema(db: Database.Database): void {
       updated_at TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS accounting_entries (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      type_of_expense_id INTEGER,
-      company_id INTEGER,
-      FOREIGN KEY (type_of_expense_id)
-        REFERENCES expense_types (id)
-        ON DELETE RESTRICT,
-      FOREIGN KEY (company_id)
-        REFERENCES companies (id)
-        ON DELETE RESTRICT
-    );
-
     CREATE TABLE IF NOT EXISTS invoice_uploads (
       id TEXT PRIMARY KEY,
       company_id INTEGER NOT NULL,
@@ -108,10 +176,41 @@ function initializeSchema(db: Database.Database): void {
         REFERENCES companies (id)
         ON DELETE RESTRICT
     );
+
+    CREATE TABLE IF NOT EXISTS accounting_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      company_id INTEGER NOT NULL,
+      document_number INTEGER NOT NULL,
+      entry_type TEXT NOT NULL CHECK(entry_type IN ('income', 'expense')),
+      document_date TEXT NOT NULL,
+      document_year INTEGER NOT NULL,
+      payment_received_date TEXT,
+      type_of_expense_id INTEGER,
+      counterparty_name TEXT NOT NULL,
+      booking_text TEXT NOT NULL,
+      amount_gross INTEGER NOT NULL DEFAULT 0,
+      amount_net INTEGER,
+      amount_tax INTEGER,
+      upload_id TEXT NOT NULL UNIQUE,
+      extraction_status TEXT NOT NULL DEFAULT 'pending' CHECK(extraction_status IN ('pending')),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (company_id, document_year, entry_type, document_number),
+      FOREIGN KEY (type_of_expense_id)
+        REFERENCES expense_types (id)
+        ON DELETE RESTRICT,
+      FOREIGN KEY (company_id)
+        REFERENCES companies (id)
+        ON DELETE RESTRICT,
+      FOREIGN KEY (upload_id)
+        REFERENCES invoice_uploads (id)
+        ON DELETE RESTRICT
+    );
   `);
 
   ensureExpenseTypeSortOrder(db);
   ensureAccountingEntriesCompanyColumn(db);
+  ensureAccountingEntriesColumns(db);
 }
 
 export function getDb(): Database.Database {

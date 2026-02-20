@@ -10,6 +10,12 @@ type UploadResponse = {
   originalFilename: string;
   storedFilename: string;
   uploadedAt: string;
+  entry: {
+    id: number;
+    documentNumber: number;
+    documentDate: string;
+    extractionStatus: "pending";
+  };
 };
 
 type UploadErrorPayload = {
@@ -107,7 +113,8 @@ export function UploadPageClient({ activeCompanyId, activeCompanyName }: Props) 
         {successResult ? (
           <p className="rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
             Upload succeeded: {successResult.originalFilename} stored as{" "}
-            {successResult.storedFilename}.
+            {successResult.storedFilename}. Created booking entry #
+            {successResult.entry.documentNumber} ({successResult.entry.documentDate}).
           </p>
         ) : null}
 

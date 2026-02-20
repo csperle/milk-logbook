@@ -105,3 +105,8 @@ export function countInvoiceUploadsByCompanyId(companyId: number): number {
 
   return row.count;
 }
+
+export function deleteInvoiceUploadById(id: string): void {
+  const db = getDb();
+  db.prepare("DELETE FROM invoice_uploads WHERE id = ?").run(id);
+}

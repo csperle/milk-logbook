@@ -28,8 +28,8 @@ export default async function Home() {
           </div>
         </header>
         <p className="max-w-2xl text-base text-zinc-600">
-          Use the admin area to manage expense types used by
-          expense accounting entries.
+          Upload invoices and review created booking entries. Use admin pages to manage
+          companies and expense types.
         </p>
         <div className="flex flex-wrap gap-3">
           <Link
@@ -43,6 +43,12 @@ export default async function Home() {
             className="inline-flex items-center rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
           >
             Open Expense Types Admin
+          </Link>
+          <Link
+            href="/entries"
+            className="inline-flex items-center rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
+          >
+            View Booking Entries
           </Link>
         </div>
       </div>
