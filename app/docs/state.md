@@ -1,8 +1,8 @@
 # Project State
 
-- Last updated date: 2026-02-18
-- Current goal: implement the next small vertical slice: create booking entries with placeholder values directly after PDF upload and list entries.
-- Active feature spec(s): `docs/specs/004-booking-entry-from-upload-placeholder.md`.
+- Last updated date: 2026-02-20
+- Current goal: implement the next vertical slice: AI extraction/review/save on top of uploaded files.
+- Active feature spec(s): `docs/specs/004-booking-entry-from-upload-placeholder.md` (implemented); next spec TBD.
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -39,11 +39,26 @@
 - `stored_path` is persisted internally and not exposed in upload success responses.
 - No-orphan guarantee is implemented: file write first, DB insert second, with file cleanup on DB failure.
 - Company deletion now returns conflict (`409`) when the company is referenced by `invoice_uploads`.
+- Booking entry placeholder slice (`004-booking-entry-from-upload-placeholder`) is implemented.
+- `POST /api/uploads` now creates a linked placeholder booking entry after successful upload.
+- Upload success response includes nested booking entry summary:
+  - `entry.id`, `entry.documentNumber`, `entry.documentDate`, `entry.extractionStatus`.
+- Upload all-or-nothing behavior for entry creation is implemented with deterministic failure handling:
+  - `BOOKING_ENTRY_PERSISTENCE_FAILED`
+  - `UPLOAD_ROLLBACK_FAILED`
+- Booking entries persistence is implemented in `accounting_entries` with:
+  - sequence key `(company_id, document_year, entry_type)`
+  - document numbers starting at `1` per key
+  - deterministic unique constraints for numbering and `upload_id`.
+- `accounting_entries` links to uploads via `upload_id` (normalized metadata source).
+- Booking entries list UI is available at `/entries` and is protected by active-company context guard.
+- Booking entries API endpoint exists: `GET /api/accounting-entries`.
+- `GET /api/accounting-entries` is company-scoped via active cookie and sorted by `created_at DESC, id DESC`.
+- Home page navigation includes `/entries`.
 
 ## What remains
   - Implement next planned features:
-  - booking-entry placeholder creation from upload + entries list (`004`)
-  - AI extraction/review/save on top of uploaded files (after `004`)
+  - AI extraction/review/save on top of uploaded files
   - (deferred) list/read endpoint for uploads: `GET /api/uploads`
   - yearly overview
   - annual P&L
