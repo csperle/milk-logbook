@@ -1,8 +1,8 @@
 # Project State
 
 - Last updated date: 2026-02-20
-- Current goal: implement the next vertical slice: AI extraction/review/save on top of uploaded files.
-- Active feature spec(s): `docs/specs/004-booking-entry-from-upload-placeholder.md` (implemented); next spec TBD.
+- Current goal: implement the next vertical slice: manual review/edit after upload, and create accounting entry only on explicit save.
+- Active feature spec(s): `docs/specs/005-manual-review-save-from-upload.md`.
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -58,7 +58,8 @@
 
 ## What remains
   - Implement next planned features:
-  - AI extraction/review/save on top of uploaded files
+  - manual review/edit after upload + save-on-explicit-action (`005`)
+  - AI extraction/review/save on top of uploaded files (after `005`)
   - (deferred) list/read endpoint for uploads: `GET /api/uploads`
   - yearly overview
   - annual P&L
