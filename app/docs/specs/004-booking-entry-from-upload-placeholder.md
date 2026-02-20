@@ -32,9 +32,10 @@
   1. Dummy values per field:
 
   - documentDate: date portion of `uploadedAt` in UTC (`YYYY-MM-DD`, e.g. `2026-02-18`).
+  - UTC date extraction is intentional for this slice; local business timezone date handling is deferred.
   - counterpartyName: "Pending extraction".
   - bookingText: "Pending extraction".
-  - amountGross: 0 (stored as decimal-compatible numeric value).
+  - amountGross: 0 (stored as integer cents/rappen).
   - amountNet: null.
   - amountTax: null.
   - sourceFilePath: from upload stored_path.
@@ -59,20 +60,22 @@
   5. Document numbering:
 
   - Implement now for forward progress and stability.
-  - Assign documentNumber at creation time using `(companyId, year(documentDate UTC), entryType)` sequence, starting at `1`.
+  - Assign documentNumber at creation time using `(companyId, documentYear, entryType)` sequence, starting at `1`.
+  - `documentYear` is persisted as UTC year derived from `documentDate`.
+  - Assign number and insert entry in one DB transaction using `MAX(document_number) + 1` on the sequence key.
   - documentNumber is immutable after creation in this slice.
 
   6. Failure behavior (upload succeeded, entry create fails):
 
   - Use all-or-nothing behavior across steps:
       - If entry creation fails, roll back upload metadata + file (no orphan upload).
-      - If rollback cleanup fails, return `500` with deterministic code and do not return partial success.
+      - If rollback cleanup fails, return `500` with deterministic code `UPLOAD_ROLLBACK_FAILED` and do not return partial success.
   - End state must be all-or-nothing for this slice.
 
   7. Initial list view fields/sort:
 
   - Fields: documentNumber, entryType, documentDate, counterpartyName, amountGross, sourceOriginalFilename, createdAt.
-  - Default sort: createdAt DESC.
+  - Default sort: createdAt DESC, id DESC.
 
   ———
 
@@ -85,10 +88,25 @@
   - entryType: income | expense
   - file: PDF
 
-  On success (201), response now includes:
+  On success (201), response shape is:
 
-  - upload fields: id, companyId, entryType, originalFilename, storedFilename, uploadedAt
-  - linked entry summary: entryId, documentNumber, documentDate, extractionStatus
+  ```json
+  {
+    "id": "upload-id",
+    "companyId": 1,
+    "entryType": "income",
+    "originalFilename": "invoice.pdf",
+    "storedFilename": "uuid.pdf",
+    "uploadedAt": "2026-02-20T10:15:30.000Z",
+    "entry": {
+      "id": 123,
+      "documentNumber": 1,
+      "documentDate": "2026-02-20",
+      "extractionStatus": "pending"
+    }
+  }
+  ```
+
   - `stored_path` remains internal and must not be exposed.
 
   On error (non-2xx), response shape remains:
@@ -103,13 +121,17 @@
       - `INVALID_ACTIVE_COMPANY`
       - `UPLOAD_PERSISTENCE_FAILED`
       - `BOOKING_ENTRY_PERSISTENCE_FAILED`
+      - `UPLOAD_ROLLBACK_FAILED`
 
   ### Booking entries list
 
   - New route: /entries
   - Guarded by active company context.
   - Shows entries for active company.
-  - Data source endpoint: GET /api/accounting-entries (company-scoped via active cookie), sorted createdAt DESC.
+  - Data source endpoint: GET /api/accounting-entries (company-scoped via active cookie), sorted by `createdAt DESC, id DESC`.
+  - `GET /api/accounting-entries` returns `409` with `INVALID_ACTIVE_COMPANY` when active company context is missing/invalid.
+  - `GET /api/accounting-entries` returns `200` with `[]` when no entries exist.
+  - No pagination in this slice.
   - `GET /api/accounting-entries` success response fields (minimum):
       - id
       - companyId
@@ -133,8 +155,10 @@
   - document_number (not null)
   - entry_type (income|expense, not null)
   - document_date (not null)
+  - document_year (integer, not null; UTC year derived from document_date)
   - payment_received_date (nullable)
   - type_of_expense_id (nullable FK expense_types)
+  - upload_id (text, not null, unique, FK invoice_uploads)
   - counterparty_name (not null placeholder allowed)
   - booking_text (not null placeholder allowed)
   - amount_gross (not null, default 0)
@@ -147,7 +171,8 @@
 
   Constraints:
 
-  - Unique `(company_id, year(document_date), entry_type, document_number)`.
+  - Unique `(company_id, document_year, entry_type, document_number)`.
+  - `upload_id` unique and references `invoice_uploads(id)` with delete restrict.
   - `entry_type IN ('income', 'expense')`.
   - `extraction_status IN ('pending')` for this slice.
 
@@ -171,6 +196,10 @@
 
   - This slice intentionally delivers domain progress (booking_entries) while keeping AI and edit UX deferred.
   - Next slice can add manual edit/validation of placeholder entries before introducing AI extraction.
+  - Temporary override for this slice only:
+      - `payment_received_date` may be null for income placeholders.
+      - `type_of_expense_id` may be null for expense placeholders.
+      - Later edit/review slices will enforce requiredness.
 
   ## 8) Open questions
 
