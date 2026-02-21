@@ -1,6 +1,6 @@
 # 005-manual-review-save-from-upload
 
-- Status: Draft (ready for implementation)
+- Status: Implemented (2026-02-21)
 
 ## 1) Goal
 
@@ -133,6 +133,22 @@ This slice uses deterministic dummy prefill values (no AI extraction yet) and al
 
 - After successful `Save entry`, client redirects to `/entries`.
 - UI should show a success message including assigned `documentNumber`.
+
+18. Save-entry action persists current form snapshot
+
+- `Save entry` persists current form values to draft before final save.
+- Users do not need to click `Save draft` first to avoid stale-draft validation.
+
+19. Amount field UI prefill behavior
+
+- API draft defaults remain:
+  - `amountGross: 0`
+  - `amountNet: null`
+  - `amountTax: null`
+- Review form UI initializes all amount input fields with zero values for user clarity:
+  - `amountGross: 0`
+  - `amountNet: 0`
+  - `amountTax: 0`
 
 ---
 
@@ -268,6 +284,7 @@ Deterministic codes for this slice:
 - Actions:
   - `Save draft` (calls `PUT /api/uploads/:id/review`)
   - `Save entry` (calls `POST /api/uploads/:id/save`)
+  - `Save entry` first persists current form state via `PUT /api/uploads/:id/review`, then calls `POST /api/uploads/:id/save`
   - on success, redirect to `/entries` and show success message with `documentNumber`
 
 ### 5.2 Upload page behavior
@@ -319,6 +336,8 @@ Deterministic codes for this slice:
 - [ ] Missing/out-of-scope upload access returns `404 UPLOAD_NOT_FOUND`.
 - [ ] `PUT /api/uploads/:id/review` preserves omitted fields and validates strict JSON types without coercion.
 - [ ] After successful `Save entry`, user is redirected to `/entries` with success feedback including `documentNumber`.
+- [ ] `Save entry` works with unsaved in-form changes (no mandatory prior `Save draft` click).
+- [ ] Review UI initializes all amount inputs with zero values while keeping API default draft model unchanged.
 - [ ] No AI extraction is triggered in this slice.
 
 ---

@@ -34,16 +34,26 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
   - `src/app/page.tsx`
   - `src/app/admin/companies/page.tsx`
   - `src/app/admin/expense-types/page.tsx`
+  - `src/app/upload/page.tsx`
+  - `src/app/upload/UploadPageClient.tsx`
+  - `src/app/uploads/[id]/review/page.tsx`
+  - `src/app/uploads/[id]/review/UploadReviewPageClient.tsx`
   - `src/app/api/companies/route.ts`
   - `src/app/api/companies/[id]/route.ts`
   - `src/app/api/expense-types/route.ts`
   - `src/app/api/expense-types/[id]/route.ts`
+  - `src/app/api/uploads/route.ts`
+  - `src/app/api/uploads/[id]/review/route.ts`
+  - `src/app/api/uploads/[id]/save/route.ts`
   - `src/app/globals.css`
   - `src/lib/active-company.ts`
   - `src/lib/active-company-guard.ts`
+  - `src/lib/accounting-entries-repo.ts`
   - `src/lib/companies-repo.ts`
   - `src/lib/db.ts`
   - `src/lib/expense-types-repo.ts`
+  - `src/lib/invoice-uploads-repo.ts`
+  - `src/lib/upload-review-repo.ts`
   - `public/` for static assets
 - TS alias: `@/* -> ./src/*`
 
@@ -280,3 +290,14 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
 - Guard behavior is enforced for non-company-admin routes; users are redirected to company admin when company setup/context is missing.
 - Added `/admin/companies` UI for create/list/delete and active company selection.
 - Added explicit warning guidance on `/admin/companies` when no company exists or no active company is selected.
+
+### (2026-02-21)
+- Manual review/save-from-upload slice (`005`) implemented.
+- Upload behavior now persists metadata only on `POST /api/uploads`; accounting entries are created only on explicit save from review.
+- Added upload review flow:
+  - route: `/uploads/[id]/review`
+  - APIs: `GET /api/uploads/:id/review`, `PUT /api/uploads/:id/review`, `POST /api/uploads/:id/save`
+- Added resumable draft persistence table `upload_review_drafts` keyed by `upload_id` (`ON DELETE CASCADE`).
+- Save-time validation is enforced by entry type and document numbering is assigned transactionally at final save.
+- Deterministic duplicate handling is in place: repeated/concurrent save on same upload returns `409 ALREADY_SAVED`.
+- Next planned slice (`006`) defines capture mode vs processing mode UX with a pending-review queue (`/uploads`, `GET /api/uploads`).

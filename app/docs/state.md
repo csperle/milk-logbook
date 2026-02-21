@@ -1,8 +1,8 @@
 # Project State
 
-- Last updated date: 2026-02-20
-- Current goal: implement the next vertical slice: manual review/edit after upload, and create accounting entry only on explicit save.
-- Active feature spec(s): `docs/specs/005-manual-review-save-from-upload.md`.
+- Last updated date: 2026-02-21
+- Current goal: implement the next vertical slice: pending upload review queue with capture/processing workflows.
+- Active feature spec(s): `docs/specs/006-pending-upload-review-queue.md`.
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -39,18 +39,25 @@
 - `stored_path` is persisted internally and not exposed in upload success responses.
 - No-orphan guarantee is implemented: file write first, DB insert second, with file cleanup on DB failure.
 - Company deletion now returns conflict (`409`) when the company is referenced by `invoice_uploads`.
-- Booking entry placeholder slice (`004-booking-entry-from-upload-placeholder`) is implemented.
-- `POST /api/uploads` now creates a linked placeholder booking entry after successful upload.
-- Upload success response includes nested booking entry summary:
-  - `entry.id`, `entry.documentNumber`, `entry.documentDate`, `entry.extractionStatus`.
-- Upload all-or-nothing behavior for entry creation is implemented with deterministic failure handling:
-  - `BOOKING_ENTRY_PERSISTENCE_FAILED`
-  - `UPLOAD_ROLLBACK_FAILED`
+- Manual review/save slice (`005-manual-review-save-from-upload`) is implemented.
+- `POST /api/uploads` now persists upload metadata only and redirects users to review flow.
+- Review APIs exist:
+  - `GET /api/uploads/:id/review`
+  - `PUT /api/uploads/:id/review`
+  - `POST /api/uploads/:id/save`
+- Review page UI is available at `/uploads/[id]/review` and is protected by active-company context guard.
+- Draft persistence is implemented in `upload_review_drafts` (1:1 by `upload_id`), resumable across reload/navigation.
+- Deterministic draft defaults are used when no draft exists (`Pending extraction`, zero gross, nullable conditional fields).
+- Final accounting entry is created only on explicit save action.
 - Booking entries persistence is implemented in `accounting_entries` with:
   - sequence key `(company_id, document_year, entry_type)`
   - document numbers starting at `1` per key
   - deterministic unique constraints for numbering and `upload_id`.
 - `accounting_entries` links to uploads via `upload_id` (normalized metadata source).
+- Final-save validation rules are enforced by `entryType`:
+  - income requires `paymentReceivedDate` and forbids `typeOfExpenseId`
+  - expense requires valid `typeOfExpenseId` and forbids `paymentReceivedDate`
+- Double-save/concurrent save attempts are rejected deterministically with `409 ALREADY_SAVED`.
 - Booking entries list UI is available at `/entries` and is protected by active-company context guard.
 - Booking entries API endpoint exists: `GET /api/accounting-entries`.
 - `GET /api/accounting-entries` is company-scoped via active cookie and sorted by `created_at DESC, id DESC`.
@@ -58,9 +65,8 @@
 
 ## What remains
   - Implement next planned features:
-  - manual review/edit after upload + save-on-explicit-action (`005`)
-  - AI extraction/review/save on top of uploaded files (after `005`)
-  - (deferred) list/read endpoint for uploads: `GET /api/uploads`
+  - pending upload review queue (`006`): `/uploads` page, `GET /api/uploads`, and capture/processing guidance
+  - AI extraction/review/save on top of the established review/save workflow (after `006`)
   - yearly overview
   - annual P&L
 
@@ -70,4 +76,5 @@
 - Build: `npm run build`
 
 ## Known issues / open questions
-- Product/spec open questions remain outside the active slice: future soft-delete/archive and pagination timing.
+- Product/spec open questions remain outside the active slices: future soft-delete/archive and pagination timing.
+- Current UX gap addressed by `006`: no dedicated list/queue page yet for discovering pending drafts without direct upload URLs.
