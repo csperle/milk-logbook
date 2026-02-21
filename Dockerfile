@@ -3,7 +3,7 @@ FROM node:20-trixie-slim
 # Basics, die Codex/Dev brauchen
 RUN apt-get update && apt-get install -y \
     git bash ca-certificates curl \
-    python3 make g++ \
+    python3 make g++ procps ripgrep \
   && rm -rf /var/lib/apt/lists/*
 
 # user-local npm prefix
