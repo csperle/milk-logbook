@@ -1,6 +1,6 @@
 # 006-pending-upload-review-queue
 
-- Status: Draft (ready for implementation)
+- Status: Implemented (2026-02-21)
 
 ## 1) Goal
 

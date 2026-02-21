@@ -50,8 +50,11 @@ Success response:
 - Body: PDF binary stream/content
 - Headers:
   - `Content-Type: application/pdf`
-  - `Content-Disposition: inline; filename="<original filename>"`
+  - `Content-Disposition`:
+    - default preview response: `inline; filename="<ascii-safe-fallback>.pdf"; filename*=UTF-8''<percent-encoded-original>`
+    - download response (when `?download=1`): `attachment; filename="<ascii-safe-fallback>.pdf"; filename*=UTF-8''<percent-encoded-original>`
   - `Cache-Control: private, max-age=120`
+  - `Vary: Cookie`
 
 Error response shape:
 
@@ -71,6 +74,10 @@ Deterministic error codes:
 - `FILE_NOT_FOUND` (`404`) when DB metadata exists but file is missing on disk
 - `FILE_READ_FAILED` (`500`)
 
+Path/ID parsing policy:
+
+- Any unresolvable/malformed upload id is mapped to `UPLOAD_NOT_FOUND` (`404`) to keep lookup behavior deterministic and non-enumerable.
+
 ### 3.2 Review page behavior
 
 Route:
@@ -81,8 +88,10 @@ Behavior changes:
 
 - Show embedded PDF preview panel via `iframe` pointing to `/api/uploads/{id}/file`.
 - Keep existing review form and save actions unchanged.
-- Provide `Download PDF` link/button targeting `/api/uploads/{id}/file` as a fallback action.
-- If inline preview cannot render, show clear user guidance to use download/open fallback.
+- Provide fallback actions:
+  - `Open PDF in new tab` -> `/api/uploads/{id}/file`
+  - `Download PDF` -> `/api/uploads/{id}/file?download=1`
+- Always show short helper text near the preview explaining fallback actions because browser-level PDF render failures are not reliably detectable.
 - Keep processing-mode orientation and primary CTA rules from `006`:
   - Primary action remains review completion (`Save entry and next` when pending).
 - Responsive layout requirement:
@@ -113,23 +122,26 @@ Reused data:
 - Original filename contains special characters:
   - Response must still provide a safe user-facing filename in `Content-Disposition`.
 - Browser cannot render inline PDF (settings/extensions/mobile limitations):
-  - `Download PDF` fallback remains available and deterministic.
+  - `Open PDF in new tab` and `Download PDF` fallback actions remain available and deterministic.
 - Saved vs pending review status does not affect file availability:
   - both statuses can preview/download source PDF if company-scoped access is valid.
 - Client-side caching behavior:
   - cached PDF responses are private and short-lived (`max-age=120`), and must not be shared across users.
+- Upload id parsing behavior:
+  - malformed/unresolvable id is handled as `404 UPLOAD_NOT_FOUND` (no separate validation error).
 
 ## 6) Acceptance criteria (checkboxes)
 
 - [ ] `GET /api/uploads/:id/file` exists and is active-company scoped.
 - [ ] Endpoint returns `200` with `Content-Type: application/pdf` for valid company-scoped uploads.
-- [ ] Endpoint sets `Content-Disposition: inline` with a user-facing filename derived from stored metadata.
+- [ ] Endpoint sets `Content-Disposition` with RFC-6266-compatible filename handling (`filename` + `filename*`) and supports `attachment` mode via `?download=1`.
 - [ ] Endpoint sets `Cache-Control: private, max-age=120`.
+- [ ] Endpoint sets `Vary: Cookie` for company-scoped cache separation.
 - [ ] Endpoint uses deterministic error payload shape and codes (`INVALID_ACTIVE_COMPANY`, `UPLOAD_NOT_FOUND`, `FILE_NOT_FOUND`, `FILE_READ_FAILED`).
 - [ ] `/uploads/[id]/review` shows inline PDF preview via `iframe` for valid uploads.
 - [ ] Inline preview is available for both `pending_review` and `saved` statuses.
 - [ ] Review page uses responsive default layout: side-by-side on desktop, stacked on smaller screens.
-- [ ] Review page includes a `Download PDF` fallback action.
+- [ ] Review page includes both fallback actions (`Open PDF in new tab`, `Download PDF`).
 - [ ] Existing review behaviors (`Save draft`, `Save entry`, `Save entry and next`) continue to work unchanged.
 - [ ] No cross-company PDF access is possible through direct URL guessing.
 
