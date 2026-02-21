@@ -89,6 +89,51 @@ This slice uses deterministic dummy prefill values (no AI extraction yet) and al
 - `accounting_entries` stores `upload_id` only for file linkage.
 - File metadata (`original_filename`, `stored_path`) remains canonical in `invoice_uploads`.
 
+9. Behavior migration from slice `004`
+
+- Existing placeholder-linked `accounting_entries` created before this slice remain unchanged.
+- New upload behavior (metadata-only on `POST /api/uploads`) applies to uploads created after this slice is deployed.
+
+10. Draft FK delete behavior
+
+- `upload_review_drafts.upload_id` uses `ON DELETE CASCADE` to prevent orphan drafts if uploads are deleted in future slices.
+
+11. Draft update semantics
+
+- `PUT /api/uploads/:id/review` uses partial-update semantics.
+- Omitted fields remain unchanged.
+- Explicit `null` clears nullable fields.
+
+12. Draft type strictness
+
+- Draft endpoints accept strict JSON types only.
+- No string-to-number or string-to-date coercion is performed by the API.
+
+13. Prefill date basis
+
+- `documentDate` prefill remains derived from UTC date portion of `uploadedAt` (`YYYY-MM-DD`).
+
+14. Upload ownership error policy
+
+- For upload lookup and ownership checks, external response is unified as:
+  - `UPLOAD_NOT_FOUND` (`404`)
+- The API does not expose cross-company existence via a distinct mismatch code.
+
+15. Concurrent save handling
+
+- On concurrent `POST /api/uploads/:id/save` attempts, first successful commit wins.
+- Subsequent attempts return `409 ALREADY_SAVED` (including DB uniqueness conflict mapping on `accounting_entries.upload_id`).
+
+16. Deleted expense type between draft and final save
+
+- If draft `typeOfExpenseId` no longer exists at final save time, return `400 EXPENSE_TYPE_NOT_FOUND`.
+- Draft data remains persisted for user correction and retry.
+
+17. Post-save navigation
+
+- After successful `Save entry`, client redirects to `/entries`.
+- UI should show a success message including assigned `documentNumber`.
+
 ---
 
 ## 4) Interfaces / API
@@ -117,7 +162,8 @@ This slice uses deterministic dummy prefill values (no AI extraction yet) and al
 
 `GET /api/uploads/:id/review`
 
-- Validates active company and ownership (`upload.company_id == activeCompanyId`).
+- Validates active company and resolves upload only within active-company scope.
+- If upload is missing or outside active-company scope, return `404 UPLOAD_NOT_FOUND`.
 - Returns upload metadata + current draft values.
 - If no draft exists, returns deterministic dummy prefill values.
 
@@ -150,17 +196,19 @@ Success shape:
 `PUT /api/uploads/:id/review`
 
 - Upserts draft fields to `upload_review_drafts`.
-- Validates field types/format (not full business requiredness yet).
+- Uses partial-update semantics (provided keys only).
+- Validates strict field JSON types and formats (no coercion; not full business requiredness yet).
 - Returns saved draft.
 
 ### 4.4 Final save endpoint
 
 `POST /api/uploads/:id/save`
 
-- Validates active company + ownership.
+- Validates active company and resolves upload within active-company scope (`404 UPLOAD_NOT_FOUND` when not accessible).
 - Loads draft (or default prefill if no draft row).
 - Applies full save-time validation rules.
 - Creates `accounting_entries` row + assigns `documentNumber` transactionally.
+- Treats uniqueness conflicts on `accounting_entries.upload_id` as `409 ALREADY_SAVED`.
 - Returns created entry summary.
 
 Success shape:
@@ -197,7 +245,6 @@ Deterministic codes for this slice:
 
 - `INVALID_ACTIVE_COMPANY` (`409`)
 - `UPLOAD_NOT_FOUND` (`404`)
-- `UPLOAD_COMPANY_MISMATCH` (`409`)
 - `INVALID_JSON` (`400`)
 - `VALIDATION_ERROR` (`400`)
 - `EXPENSE_TYPE_NOT_FOUND` (`400`)
@@ -221,6 +268,7 @@ Deterministic codes for this slice:
 - Actions:
   - `Save draft` (calls `PUT /api/uploads/:id/review`)
   - `Save entry` (calls `POST /api/uploads/:id/save`)
+  - on success, redirect to `/entries` and show success message with `documentNumber`
 
 ### 5.2 Upload page behavior
 
@@ -238,7 +286,7 @@ Deterministic codes for this slice:
 
 ### 6.1 New table: `upload_review_drafts`
 
-- `upload_id` (text primary key, FK `invoice_uploads.id`, delete cascade/restrict per implementation choice; default: restrict)
+- `upload_id` (text primary key, FK `invoice_uploads.id`, `ON DELETE CASCADE`)
 - `document_date` (text nullable in DB, validated by API)
 - `counterparty_name` (text nullable in DB)
 - `booking_text` (text nullable in DB)
@@ -266,7 +314,11 @@ Deterministic codes for this slice:
 - [ ] Clicking `Save entry` creates one accounting entry with transactional document numbering.
 - [ ] Save enforces income/expense conditional requiredness.
 - [ ] Double-save on same upload is rejected with `409 ALREADY_SAVED`.
+- [ ] Concurrent final-save attempts on same upload resolve deterministically (`1x success`, others `409 ALREADY_SAVED`).
 - [ ] `/entries` lists only saved entries.
+- [ ] Missing/out-of-scope upload access returns `404 UPLOAD_NOT_FOUND`.
+- [ ] `PUT /api/uploads/:id/review` preserves omitted fields and validates strict JSON types without coercion.
+- [ ] After successful `Save entry`, user is redirected to `/entries` with success feedback including `documentNumber`.
 - [ ] No AI extraction is triggered in this slice.
 
 ---
