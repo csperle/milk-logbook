@@ -1,8 +1,8 @@
 # Project State
 
 - Last updated date: 2026-02-21
-- Current goal: implement the next vertical slice: upload review PDF preview (`007`).
-- Active feature spec(s): `docs/specs/007-upload-review-pdf-preview.md`.
+- Current goal: prepare/implement the next vertical slice after `007` (AI extraction on review/save workflow).
+- Active feature spec(s): none currently selected.
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -87,11 +87,24 @@
   - primary action remains upload next file
   - secondary actions: review current upload now, open pending queue
 - Processing-mode queue UX now includes a clear primary CTA (`Review oldest pending`) when pending items exist.
+- Upload review PDF preview slice (`007-upload-review-pdf-preview`) is implemented.
+- File preview API endpoint exists: `GET /api/uploads/:id/file`.
+- File endpoint behavior includes:
+  - active-company scoping
+  - deterministic error shape/codes (`INVALID_ACTIVE_COMPANY`, `UPLOAD_NOT_FOUND`, `FILE_NOT_FOUND`, `FILE_READ_FAILED`)
+  - `Content-Type: application/pdf`
+  - `Content-Disposition` inline by default and attachment via `?download=1`
+  - `Cache-Control: private, max-age=120`
+  - `Vary: Cookie`
+- Review page (`/uploads/[id]/review`) now includes:
+  - inline PDF preview via `iframe`
+  - fallback actions `Open PDF in new tab` and `Download PDF`
+  - responsive default layout (stacked below `lg`, side-by-side at `lg` and above)
+- PDF preview/fallback is available for both `pending_review` and `saved` upload review statuses.
 
 ## What remains
   - Implement next planned features:
-  - upload review PDF preview (`007`): `GET /api/uploads/:id/file` and iframe preview on `/uploads/[id]/review`
-  - AI extraction/review/save on top of the established review/save workflow (after `006`)
+  - AI extraction/review/save on top of the established review/save workflow
   - yearly overview
   - annual P&L
 
@@ -102,4 +115,3 @@
 
 ## Known issues / open questions
 - Product/spec open questions remain outside the active slices: future soft-delete/archive and pagination timing.
-- Slice `007` spec open questions are resolved (cache policy, responsive layout, and saved-item preview behavior).

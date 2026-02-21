@@ -1,6 +1,6 @@
 # 007-upload-review-pdf-preview
 
-- Status: Draft (ready for implementation)
+- Status: Implemented (2026-02-21)
 
 ## 1) Goal
 
@@ -132,18 +132,18 @@ Reused data:
 
 ## 6) Acceptance criteria (checkboxes)
 
-- [ ] `GET /api/uploads/:id/file` exists and is active-company scoped.
-- [ ] Endpoint returns `200` with `Content-Type: application/pdf` for valid company-scoped uploads.
-- [ ] Endpoint sets `Content-Disposition` with RFC-6266-compatible filename handling (`filename` + `filename*`) and supports `attachment` mode via `?download=1`.
-- [ ] Endpoint sets `Cache-Control: private, max-age=120`.
-- [ ] Endpoint sets `Vary: Cookie` for company-scoped cache separation.
-- [ ] Endpoint uses deterministic error payload shape and codes (`INVALID_ACTIVE_COMPANY`, `UPLOAD_NOT_FOUND`, `FILE_NOT_FOUND`, `FILE_READ_FAILED`).
-- [ ] `/uploads/[id]/review` shows inline PDF preview via `iframe` for valid uploads.
-- [ ] Inline preview is available for both `pending_review` and `saved` statuses.
-- [ ] Review page uses responsive default layout: side-by-side on desktop, stacked on smaller screens.
-- [ ] Review page includes both fallback actions (`Open PDF in new tab`, `Download PDF`).
-- [ ] Existing review behaviors (`Save draft`, `Save entry`, `Save entry and next`) continue to work unchanged.
-- [ ] No cross-company PDF access is possible through direct URL guessing.
+- [x] `GET /api/uploads/:id/file` exists and is active-company scoped.
+- [x] Endpoint returns `200` with `Content-Type: application/pdf` for valid company-scoped uploads.
+- [x] Endpoint sets `Content-Disposition` with RFC-6266-compatible filename handling (`filename` + `filename*`) and supports `attachment` mode via `?download=1`.
+- [x] Endpoint sets `Cache-Control: private, max-age=120`.
+- [x] Endpoint sets `Vary: Cookie` for company-scoped cache separation.
+- [x] Endpoint uses deterministic error payload shape and codes (`INVALID_ACTIVE_COMPANY`, `UPLOAD_NOT_FOUND`, `FILE_NOT_FOUND`, `FILE_READ_FAILED`).
+- [x] `/uploads/[id]/review` shows inline PDF preview via `iframe` for valid uploads.
+- [x] Inline preview is available for both `pending_review` and `saved` statuses.
+- [x] Review page uses responsive default layout: side-by-side on desktop, stacked on smaller screens.
+- [x] Review page includes both fallback actions (`Open PDF in new tab`, `Download PDF`).
+- [x] Existing review behaviors (`Save draft`, `Save entry`, `Save entry and next`) continue to work unchanged.
+- [x] No cross-company PDF access is possible through direct URL guessing.
 
 ## 7) Open questions
 

@@ -43,6 +43,7 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
   - `src/app/api/expense-types/route.ts`
   - `src/app/api/expense-types/[id]/route.ts`
   - `src/app/api/uploads/route.ts`
+  - `src/app/api/uploads/[id]/file/route.ts`
   - `src/app/api/uploads/[id]/review/route.ts`
   - `src/app/api/uploads/[id]/save/route.ts`
   - `src/app/globals.css`
@@ -300,4 +301,12 @@ This application simplifies bookkeeping for sole proprietors who use a simple pr
 - Added resumable draft persistence table `upload_review_drafts` keyed by `upload_id` (`ON DELETE CASCADE`).
 - Save-time validation is enforced by entry type and document numbering is assigned transactionally at final save.
 - Deterministic duplicate handling is in place: repeated/concurrent save on same upload returns `409 ALREADY_SAVED`.
-- Next planned slice (`006`) defines capture mode vs processing mode UX with a pending-review queue (`/uploads`, `GET /api/uploads`).
+- Pending upload review queue slice (`006`) implemented:
+  - route: `/uploads`
+  - API: `GET /api/uploads`
+  - status-aware actions and `Save entry and next` processing flow
+- Upload review PDF preview slice (`007`) implemented:
+  - API: `GET /api/uploads/:id/file`
+  - review UI embeds source PDF via iframe on `/uploads/[id]/review`
+  - deterministic fallback actions (`Open PDF in new tab`, `Download PDF`)
+  - response headers include scoped cache policy and RFC-6266-compatible filename handling
