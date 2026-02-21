@@ -1,8 +1,8 @@
 # Project State
 
 - Last updated date: 2026-02-21
-- Current goal: implement the next vertical slice after `006`: AI extraction integrated into the upload review/save workflow.
-- Active feature spec(s): `docs/specs/006-pending-upload-review-queue.md` (implemented baseline).
+- Current goal: implement the next vertical slice: upload review PDF preview (`007`).
+- Active feature spec(s): `docs/specs/007-upload-review-pdf-preview.md`.
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -90,6 +90,7 @@
 
 ## What remains
   - Implement next planned features:
+  - upload review PDF preview (`007`): `GET /api/uploads/:id/file` and iframe preview on `/uploads/[id]/review`
   - AI extraction/review/save on top of the established review/save workflow (after `006`)
   - yearly overview
   - annual P&L
@@ -101,3 +102,4 @@
 
 ## Known issues / open questions
 - Product/spec open questions remain outside the active slices: future soft-delete/archive and pagination timing.
+- Slice `007` spec open questions are resolved (cache policy, responsive layout, and saved-item preview behavior).
