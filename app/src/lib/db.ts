@@ -177,6 +177,26 @@ function initializeSchema(db: Database.Database): void {
         ON DELETE RESTRICT
     );
 
+    CREATE TABLE IF NOT EXISTS upload_review_drafts (
+      upload_id TEXT PRIMARY KEY,
+      document_date TEXT,
+      counterparty_name TEXT,
+      booking_text TEXT,
+      amount_gross INTEGER,
+      amount_net INTEGER,
+      amount_tax INTEGER,
+      payment_received_date TEXT,
+      type_of_expense_id INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (upload_id)
+        REFERENCES invoice_uploads (id)
+        ON DELETE CASCADE,
+      FOREIGN KEY (type_of_expense_id)
+        REFERENCES expense_types (id)
+        ON DELETE RESTRICT
+    );
+
     CREATE TABLE IF NOT EXISTS accounting_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       company_id INTEGER NOT NULL,

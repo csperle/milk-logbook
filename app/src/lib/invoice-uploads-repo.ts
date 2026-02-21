@@ -91,6 +91,35 @@ export function createInvoiceUpload(input: {
   return mapInvoiceUpload(createdRow);
 }
 
+export function getInvoiceUploadByIdAndCompanyId(
+  id: string,
+  companyId: number,
+): InvoiceUpload | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `
+        SELECT
+          id,
+          company_id,
+          entry_type,
+          original_filename,
+          stored_filename,
+          stored_path,
+          uploaded_at
+        FROM invoice_uploads
+        WHERE id = ? AND company_id = ?
+      `,
+    )
+    .get(id, companyId) as InvoiceUploadRow | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  return mapInvoiceUpload(row);
+}
+
 export function countInvoiceUploadsByCompanyId(companyId: number): number {
   const db = getDb();
   const row = db

@@ -268,3 +268,12 @@ export function reorderExpenseTypes(
 
   return { ok: true };
 }
+
+export function expenseTypeExistsById(id: number): boolean {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT id FROM expense_types WHERE id = ?")
+    .get(id) as { id: number } | undefined;
+
+  return Boolean(row);
+}

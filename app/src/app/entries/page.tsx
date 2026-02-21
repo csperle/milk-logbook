@@ -43,7 +43,7 @@ export default async function EntriesPage() {
 
         {entries.length < 1 ? (
           <p className="rounded border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-600">
-            No booking entries yet. Upload an invoice PDF to create the first placeholder entry.
+            No booking entries yet. Upload an invoice PDF and save it from the review page.
           </p>
         ) : (
           <div className="overflow-x-auto rounded border border-zinc-300 bg-white">

@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type UploadResponse = {
   id: string;
@@ -10,12 +11,6 @@ type UploadResponse = {
   originalFilename: string;
   storedFilename: string;
   uploadedAt: string;
-  entry: {
-    id: number;
-    documentNumber: number;
-    documentDate: string;
-    extractionStatus: "pending";
-  };
 };
 
 type UploadErrorPayload = {
@@ -44,16 +39,15 @@ async function parseApiError(response: Response): Promise<string> {
 }
 
 export function UploadPageClient({ activeCompanyId, activeCompanyName }: Props) {
+  const router = useRouter();
   const [entryType, setEntryType] = useState<"income" | "expense">("expense");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successResult, setSuccessResult] = useState<UploadResponse | null>(null);
   const isExpense = entryType === "expense";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setErrorMessage(null);
-    setSuccessResult(null);
 
     const form = event.currentTarget;
     const formData = new FormData(form);
@@ -77,8 +71,8 @@ export function UploadPageClient({ activeCompanyId, activeCompanyName }: Props) 
       }
 
       const payload = (await response.json()) as UploadResponse;
-      setSuccessResult(payload);
       form.reset();
+      router.push(`/uploads/${payload.id}/review`);
     } catch {
       setErrorMessage("Upload failed.");
     } finally {
@@ -107,14 +101,6 @@ export function UploadPageClient({ activeCompanyId, activeCompanyName }: Props) 
         {errorMessage ? (
           <p className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
             {errorMessage}
-          </p>
-        ) : null}
-
-        {successResult ? (
-          <p className="rounded border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            Upload succeeded: {successResult.originalFilename} stored as{" "}
-            {successResult.storedFilename}. Created booking entry #
-            {successResult.entry.documentNumber} ({successResult.entry.documentDate}).
           </p>
         ) : null}
 

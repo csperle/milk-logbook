@@ -4,13 +4,8 @@ import path from "node:path";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { ACTIVE_COMPANY_COOKIE_NAME, parseActiveCompanyId } from "@/lib/active-company";
-import { createPlaceholderEntryFromUpload } from "@/lib/accounting-entries-repo";
 import { listCompanies } from "@/lib/companies-repo";
-import {
-  createInvoiceUpload,
-  deleteInvoiceUploadById,
-  UploadEntryType,
-} from "@/lib/invoice-uploads-repo";
+import { createInvoiceUpload, UploadEntryType } from "@/lib/invoice-uploads-repo";
 
 export const runtime = "nodejs";
 
@@ -24,9 +19,7 @@ type UploadErrorCode =
   | "FILE_TOO_LARGE"
   | "UNSUPPORTED_MEDIA_TYPE"
   | "INVALID_ACTIVE_COMPANY"
-  | "UPLOAD_PERSISTENCE_FAILED"
-  | "BOOKING_ENTRY_PERSISTENCE_FAILED"
-  | "UPLOAD_ROLLBACK_FAILED";
+  | "UPLOAD_PERSISTENCE_FAILED";
 
 function errorResponse(status: number, code: UploadErrorCode, message: string) {
   return NextResponse.json(
@@ -139,46 +132,6 @@ export async function POST(request: Request) {
       uploadedAt,
     });
 
-    const documentDate = uploadedAt.slice(0, 10);
-    let createdEntry;
-    try {
-      createdEntry = createPlaceholderEntryFromUpload({
-        companyId: activeCompanyId,
-        entryType: rawEntryType,
-        uploadId: createdUpload.id,
-        documentDate,
-        createdAt: uploadedAt,
-      });
-    } catch {
-      let rollbackFailed = false;
-
-      try {
-        deleteInvoiceUploadById(createdUpload.id);
-      } catch {
-        rollbackFailed = true;
-      }
-
-      try {
-        await fs.unlink(absolutePath);
-      } catch {
-        rollbackFailed = true;
-      }
-
-      if (rollbackFailed) {
-        return errorResponse(
-          500,
-          "UPLOAD_ROLLBACK_FAILED",
-          "Could not roll back upload after booking entry creation failure.",
-        );
-      }
-
-      return errorResponse(
-        500,
-        "BOOKING_ENTRY_PERSISTENCE_FAILED",
-        "Could not persist booking entry.",
-      );
-    }
-
     return NextResponse.json(
       {
         id: createdUpload.id,
@@ -187,12 +140,6 @@ export async function POST(request: Request) {
         originalFilename: createdUpload.originalFilename,
         storedFilename: createdUpload.storedFilename,
         uploadedAt: createdUpload.uploadedAt,
-        entry: {
-          id: createdEntry.id,
-          documentNumber: createdEntry.documentNumber,
-          documentDate: createdEntry.documentDate,
-          extractionStatus: createdEntry.extractionStatus,
-        },
       },
       { status: 201 },
     );
