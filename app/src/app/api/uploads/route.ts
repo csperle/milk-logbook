@@ -5,7 +5,12 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { ACTIVE_COMPANY_COOKIE_NAME, parseActiveCompanyId } from "@/lib/active-company";
 import { listCompanies } from "@/lib/companies-repo";
-import { createInvoiceUpload, UploadEntryType } from "@/lib/invoice-uploads-repo";
+import {
+  createInvoiceUpload,
+  listUploadQueueItemsByCompanyId,
+  type UploadEntryType,
+  type UploadStatusFilter,
+} from "@/lib/invoice-uploads-repo";
 
 export const runtime = "nodejs";
 
@@ -21,7 +26,24 @@ type UploadErrorCode =
   | "INVALID_ACTIVE_COMPANY"
   | "UPLOAD_PERSISTENCE_FAILED";
 
+type UploadListErrorCode =
+  | "INVALID_ACTIVE_COMPANY"
+  | "VALIDATION_ERROR"
+  | "UPLOAD_LIST_FAILED";
+
 function errorResponse(status: number, code: UploadErrorCode, message: string) {
+  return NextResponse.json(
+    {
+      error: {
+        code,
+        message,
+      },
+    },
+    { status },
+  );
+}
+
+function uploadListErrorResponse(status: number, code: UploadListErrorCode, message: string) {
   return NextResponse.json(
     {
       error: {
@@ -37,13 +59,12 @@ function isUploadEntryType(value: string): value is UploadEntryType {
   return value === "income" || value === "expense";
 }
 
-async function hasPdfSignature(file: File): Promise<boolean> {
-  const headerBuffer = await file.slice(0, PDF_MAGIC_HEADER.length).arrayBuffer();
-  const signature = new TextDecoder("utf-8").decode(headerBuffer);
-  return signature === PDF_MAGIC_HEADER;
+function isUploadStatusFilter(value: string): value is UploadStatusFilter {
+  return value === "pending_review" || value === "saved" || value === "all";
 }
 
-export async function POST(request: Request) {
+async function getActiveCompanyIdOrError():
+  Promise<{ ok: true; activeCompanyId: number } | { ok: false; response: NextResponse }> {
   const companies = listCompanies();
   const cookieStore = await cookies();
   const activeCompanyId = parseActiveCompanyId(
@@ -53,6 +74,58 @@ export async function POST(request: Request) {
     activeCompanyId !== null && companies.some((company) => company.id === activeCompanyId);
 
   if (!hasValidActiveCompany) {
+    return {
+      ok: false,
+      response: uploadListErrorResponse(
+        409,
+        "INVALID_ACTIVE_COMPANY",
+        "Missing or invalid active company context.",
+      ),
+    };
+  }
+
+  return { ok: true, activeCompanyId };
+}
+
+async function hasPdfSignature(file: File): Promise<boolean> {
+  const headerBuffer = await file.slice(0, PDF_MAGIC_HEADER.length).arrayBuffer();
+  const signature = new TextDecoder("utf-8").decode(headerBuffer);
+  return signature === PDF_MAGIC_HEADER;
+}
+
+export async function GET(request: Request) {
+  const activeCompany = await getActiveCompanyIdOrError();
+  if (!activeCompany.ok) {
+    return activeCompany.response;
+  }
+
+  const { searchParams } = new URL(request.url);
+  const rawStatus = searchParams.get("status");
+  const parsedStatus = rawStatus ?? "pending_review";
+
+  if (!isUploadStatusFilter(parsedStatus)) {
+    return uploadListErrorResponse(
+      400,
+      "VALIDATION_ERROR",
+      "status must be one of pending_review, saved, or all.",
+    );
+  }
+
+  try {
+    const items = listUploadQueueItemsByCompanyId(activeCompany.activeCompanyId, parsedStatus);
+    return NextResponse.json({ items }, { status: 200 });
+  } catch {
+    return uploadListErrorResponse(
+      500,
+      "UPLOAD_LIST_FAILED",
+      "Could not list uploads.",
+    );
+  }
+}
+
+export async function POST(request: Request) {
+  const activeCompany = await getActiveCompanyIdOrError();
+  if (!activeCompany.ok) {
     return errorResponse(
       409,
       "INVALID_ACTIVE_COMPANY",
@@ -124,7 +197,7 @@ export async function POST(request: Request) {
   try {
     const createdUpload = createInvoiceUpload({
       id: uploadId,
-      companyId: activeCompanyId,
+      companyId: activeCompany.activeCompanyId,
       entryType: rawEntryType,
       originalFilename: fileValue.name,
       storedFilename,

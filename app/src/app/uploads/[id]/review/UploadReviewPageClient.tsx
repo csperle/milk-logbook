@@ -27,6 +27,7 @@ type ReviewResponse = {
     paymentReceivedDate: string | null;
     typeOfExpenseId: number | null;
   };
+  reviewStatus: "pending_review" | "saved";
 };
 
 type SaveEntryResponse = {
@@ -88,17 +89,20 @@ function parseIntegerString(value: string): number | null {
   return Number.parseInt(trimmed, 10);
 }
 
-async function parseApiError(response: Response): Promise<string> {
+async function parseApiError(response: Response): Promise<{ code?: string; message: string }> {
   try {
     const payload = (await response.json()) as ApiErrorPayload;
     if (payload.error?.message) {
-      return payload.error.message;
+      return {
+        code: payload.error.code,
+        message: payload.error.message,
+      };
     }
   } catch {
-    return "Request failed.";
+    return { message: "Request failed." };
   }
 
-  return "Request failed.";
+  return { message: "Request failed." };
 }
 
 export function UploadReviewPageClient({
@@ -112,6 +116,7 @@ export function UploadReviewPageClient({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isSavingEntry, setIsSavingEntry] = useState(false);
+  const [isSavingEntryAndNext, setIsSavingEntryAndNext] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [reviewData, setReviewData] = useState<ReviewResponse | null>(null);
   const [formState, setFormState] = useState<DraftFormState | null>(null);
@@ -127,7 +132,7 @@ export function UploadReviewPageClient({
         const response = await fetch(`/api/uploads/${uploadId}/review`, { cache: "no-store" });
         if (!response.ok) {
           if (isActive) {
-            setLoadError(await parseApiError(response));
+            setLoadError((await parseApiError(response)).message);
           }
           return;
         }
@@ -223,7 +228,7 @@ export function UploadReviewPageClient({
       });
 
       if (!response.ok) {
-        setFeedbackMessage(await parseApiError(response));
+        setFeedbackMessage((await parseApiError(response)).message);
         return;
       }
 
@@ -238,8 +243,21 @@ export function UploadReviewPageClient({
     }
   }
 
-  async function handleSaveEntry() {
+  async function findNextPendingUploadId(): Promise<string | null> {
+    const response = await fetch("/api/uploads?status=pending_review", { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error((await parseApiError(response)).message);
+    }
+
+    const payload = (await response.json()) as {
+      items: Array<{ id: string }>;
+    };
+    return payload.items.find((item) => item.id !== uploadId)?.id ?? null;
+  }
+
+  async function handleSaveEntry(options?: { andNext?: boolean }) {
     setFeedbackMessage(null);
+    const andNext = options?.andNext ?? false;
 
     if (!draftPayload) {
       setFeedbackMessage("Draft form is not ready.");
@@ -250,7 +268,11 @@ export function UploadReviewPageClient({
       return;
     }
 
-    setIsSavingEntry(true);
+    if (andNext) {
+      setIsSavingEntryAndNext(true);
+    } else {
+      setIsSavingEntry(true);
+    }
     try {
       const draftSaveResponse = await fetch(`/api/uploads/${uploadId}/review`, {
         method: "PUT",
@@ -261,7 +283,7 @@ export function UploadReviewPageClient({
       });
 
       if (!draftSaveResponse.ok) {
-        setFeedbackMessage(await parseApiError(draftSaveResponse));
+        setFeedbackMessage((await parseApiError(draftSaveResponse)).message);
         return;
       }
 
@@ -270,11 +292,34 @@ export function UploadReviewPageClient({
       });
 
       if (!response.ok) {
-        setFeedbackMessage(await parseApiError(response));
+        const apiError = await parseApiError(response);
+        if (andNext && apiError.code === "ALREADY_SAVED") {
+          const nextUploadId = await findNextPendingUploadId();
+          if (nextUploadId) {
+            router.push(`/uploads/${nextUploadId}/review`);
+            return;
+          }
+
+          router.push("/uploads?status=pending_review&flash=saved_and_queue_empty");
+          return;
+        }
+
+        setFeedbackMessage(apiError.message);
         return;
       }
 
       const payload = (await response.json()) as SaveEntryResponse;
+      if (andNext) {
+        const nextUploadId = await findNextPendingUploadId();
+        if (nextUploadId) {
+          router.push(`/uploads/${nextUploadId}/review`);
+          return;
+        }
+
+        router.push("/uploads?status=pending_review&flash=saved_and_queue_empty");
+        return;
+      }
+
       setFeedbackMessage(
         `Entry #${payload.entry.documentNumber} saved. Redirecting to booking entries...`,
       );
@@ -282,7 +327,11 @@ export function UploadReviewPageClient({
     } catch {
       setFeedbackMessage("Could not save entry.");
     } finally {
-      setIsSavingEntry(false);
+      if (andNext) {
+        setIsSavingEntryAndNext(false);
+      } else {
+        setIsSavingEntry(false);
+      }
     }
   }
 
@@ -321,7 +370,7 @@ export function UploadReviewPageClient({
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">Review Upload</h1>
             <p className="mt-1 text-sm text-zinc-600">
-              Active company: {activeCompanyName} (#{activeCompanyId})
+              Processing mode • Active company: {activeCompanyName} (#{activeCompanyId})
             </p>
           </div>
           <div className="flex gap-2">
@@ -329,7 +378,13 @@ export function UploadReviewPageClient({
               href="/upload"
               className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
             >
-              Back to upload
+              Open capture mode
+            </Link>
+            <Link
+              href="/uploads?status=pending_review"
+              className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
+            >
+              Back to queue
             </Link>
             <Link
               href="/entries"
@@ -494,13 +549,25 @@ export function UploadReviewPageClient({
             >
               {isSavingDraft ? "Saving draft..." : "Save draft"}
             </button>
+            {reviewData.reviewStatus === "pending_review" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void handleSaveEntry({ andNext: true });
+                }}
+                disabled={isSavingEntry || isSavingEntryAndNext}
+                className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-500"
+              >
+                {isSavingEntryAndNext ? "Saving and opening next..." : "Save entry and next"}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => {
-                void handleSaveEntry();
+                void handleSaveEntry({ andNext: false });
               }}
-              disabled={isSavingEntry}
-              className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-500"
+              disabled={isSavingEntry || isSavingEntryAndNext}
+              className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSavingEntry ? "Saving entry..." : "Save entry"}
             </button>

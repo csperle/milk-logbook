@@ -20,6 +20,12 @@ export type UploadReviewDraft = {
   typeOfExpenseId: number | null;
 };
 
+export type UploadReviewData = {
+  upload: UploadReviewUpload;
+  draft: UploadReviewDraft;
+  reviewStatus: "pending_review" | "saved";
+};
+
 type UploadReviewDraftRow = {
   upload_id: string;
   document_date: string | null;
@@ -101,7 +107,7 @@ function getDraftRow(uploadId: string): UploadReviewDraftRow | null {
 export function getUploadReviewByUploadIdAndCompanyId(
   uploadId: string,
   companyId: number,
-): { upload: UploadReviewUpload; draft: UploadReviewDraft } | null {
+): UploadReviewData | null {
   const upload = getInvoiceUploadByIdAndCompanyId(uploadId, companyId);
   if (!upload) {
     return null;
@@ -109,10 +115,21 @@ export function getUploadReviewByUploadIdAndCompanyId(
 
   const fallbackDraft = defaultDraft(upload.uploadedAt);
   const draftRow = getDraftRow(uploadId);
+  const hasSavedEntry = getDb()
+    .prepare(
+      `
+        SELECT 1 AS exists_value
+        FROM accounting_entries
+        WHERE upload_id = ?
+        LIMIT 1
+      `,
+    )
+    .get(uploadId) as { exists_value: number } | undefined;
 
   return {
     upload: toUploadReviewUpload(upload),
     draft: draftRow ? mapDraftRow(draftRow, fallbackDraft) : fallbackDraft,
+    reviewStatus: hasSavedEntry ? "saved" : "pending_review",
   };
 }
 
@@ -120,7 +137,7 @@ export function saveUploadReviewDraft(input: {
   uploadId: string;
   companyId: number;
   patch: Partial<UploadReviewDraft>;
-}): { upload: UploadReviewUpload; draft: UploadReviewDraft } | null {
+}): UploadReviewData | null {
   const current = getUploadReviewByUploadIdAndCompanyId(input.uploadId, input.companyId);
   if (!current) {
     return null;
@@ -197,5 +214,6 @@ export function saveUploadReviewDraft(input: {
   return {
     upload: current.upload,
     draft: nextDraft,
+    reviewStatus: current.reviewStatus,
   };
 }

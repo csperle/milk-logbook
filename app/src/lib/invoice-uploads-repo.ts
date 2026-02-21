@@ -12,6 +12,23 @@ export type InvoiceUpload = {
   uploadedAt: string;
 };
 
+export type UploadReviewStatus = "pending_review" | "saved";
+export type UploadStatusFilter = UploadReviewStatus | "all";
+
+export type UploadQueueItem = {
+  id: string;
+  companyId: number;
+  entryType: UploadEntryType;
+  originalFilename: string;
+  uploadedAt: string;
+  reviewStatus: UploadReviewStatus;
+  savedEntry: {
+    id: number;
+    documentNumber: number;
+    createdAt: string;
+  } | null;
+};
+
 type InvoiceUploadRow = {
   id: string;
   company_id: number;
@@ -20,6 +37,17 @@ type InvoiceUploadRow = {
   stored_filename: string;
   stored_path: string;
   uploaded_at: string;
+};
+
+type UploadQueueItemRow = {
+  id: string;
+  company_id: number;
+  entry_type: UploadEntryType;
+  original_filename: string;
+  uploaded_at: string;
+  accounting_entry_id: number | null;
+  accounting_entry_document_number: number | null;
+  accounting_entry_created_at: string | null;
 };
 
 function mapInvoiceUpload(row: InvoiceUploadRow): InvoiceUpload {
@@ -118,6 +146,70 @@ export function getInvoiceUploadByIdAndCompanyId(
   }
 
   return mapInvoiceUpload(row);
+}
+
+function mapUploadQueueItem(row: UploadQueueItemRow): UploadQueueItem {
+  const isSaved = row.accounting_entry_id !== null;
+
+  return {
+    id: row.id,
+    companyId: row.company_id,
+    entryType: row.entry_type,
+    originalFilename: row.original_filename,
+    uploadedAt: row.uploaded_at,
+    reviewStatus: isSaved ? "saved" : "pending_review",
+    savedEntry: isSaved
+      ? {
+          id: row.accounting_entry_id as number,
+          documentNumber: row.accounting_entry_document_number as number,
+          createdAt: row.accounting_entry_created_at as string,
+        }
+      : null,
+  };
+}
+
+export function listUploadQueueItemsByCompanyId(
+  companyId: number,
+  status: UploadStatusFilter,
+): UploadQueueItem[] {
+  const db = getDb();
+
+  let statusClause = "";
+  if (status === "pending_review") {
+    statusClause = "AND accounting_entries.id IS NULL";
+  } else if (status === "saved") {
+    statusClause = "AND accounting_entries.id IS NOT NULL";
+  }
+
+  const rows = db
+    .prepare(
+      `
+        SELECT
+          invoice_uploads.id,
+          invoice_uploads.company_id,
+          invoice_uploads.entry_type,
+          invoice_uploads.original_filename,
+          invoice_uploads.uploaded_at,
+          accounting_entries.id AS accounting_entry_id,
+          accounting_entries.document_number AS accounting_entry_document_number,
+          accounting_entries.created_at AS accounting_entry_created_at
+        FROM invoice_uploads
+        LEFT JOIN accounting_entries
+          ON accounting_entries.upload_id = invoice_uploads.id
+        WHERE invoice_uploads.company_id = ?
+          ${statusClause}
+        ORDER BY
+          CASE
+            WHEN accounting_entries.id IS NULL THEN 0
+            ELSE 1
+          END ASC,
+          invoice_uploads.uploaded_at ASC,
+          invoice_uploads.id ASC
+      `,
+    )
+    .all(companyId) as UploadQueueItemRow[];
+
+  return rows.map(mapUploadQueueItem);
 }
 
 export function countInvoiceUploadsByCompanyId(companyId: number): number {
