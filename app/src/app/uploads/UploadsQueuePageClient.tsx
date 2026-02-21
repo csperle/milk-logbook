@@ -207,10 +207,17 @@ export function UploadsQueuePageClient({ activeCompanyId, activeCompanyName }: P
               to continue processing.
             </p>
           ) : oldestPendingItem ? (
-            <p className="text-sm text-zinc-700">
-              Pending uploads are ready. Open a row with <span className="font-medium">Review</span>{" "}
-              to continue processing mode.
-            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link
+                href={`/uploads/${oldestPendingItem.id}/review`}
+                className="inline-flex items-center rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
+              >
+                Review oldest pending
+              </Link>
+              <p className="text-sm text-zinc-700">
+                Processing mode is active. You can also review any pending row below.
+              </p>
+            </div>
           ) : (
             <div className="flex flex-wrap items-center gap-3">
               <Link

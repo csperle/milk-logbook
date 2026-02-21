@@ -1,8 +1,8 @@
 # Project State
 
 - Last updated date: 2026-02-21
-- Current goal: implement the next vertical slice: pending upload review queue with capture/processing workflows.
-- Active feature spec(s): `docs/specs/006-pending-upload-review-queue.md`.
+- Current goal: implement the next vertical slice after `006`: AI extraction integrated into the upload review/save workflow.
+- Active feature spec(s): `docs/specs/006-pending-upload-review-queue.md` (implemented baseline).
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -40,7 +40,7 @@
 - No-orphan guarantee is implemented: file write first, DB insert second, with file cleanup on DB failure.
 - Company deletion now returns conflict (`409`) when the company is referenced by `invoice_uploads`.
 - Manual review/save slice (`005-manual-review-save-from-upload`) is implemented.
-- `POST /api/uploads` now persists upload metadata only and redirects users to review flow.
+- `POST /api/uploads` persists upload metadata only; accounting entries are still created only at explicit save time.
 - Review APIs exist:
   - `GET /api/uploads/:id/review`
   - `PUT /api/uploads/:id/review`
@@ -62,10 +62,34 @@
 - Booking entries API endpoint exists: `GET /api/accounting-entries`.
 - `GET /api/accounting-entries` is company-scoped via active cookie and sorted by `created_at DESC, id DESC`.
 - Home page navigation includes `/entries`.
+- Pending upload review queue slice (`006-pending-upload-review-queue`) is implemented.
+- Upload queue UI is available at `/uploads` and is protected by active-company context guard.
+- Upload queue API endpoint exists: `GET /api/uploads`.
+- `GET /api/uploads` supports `status` filter (`pending_review` default, `saved`, `all`) with deterministic validation errors.
+- Queue item review status is derived via join semantics (`pending_review` when no accounting entry exists, otherwise `saved`).
+- Queue sorting is deterministic and company-scoped:
+  - pending first
+  - then `uploaded_at ASC`
+  - tie-breaker `id ASC`
+- Queue actions are status-specific:
+  - pending items: `Review` -> `/uploads/{id}/review`
+  - saved items: `View entry` -> `/entries`
+- Review page includes `Save entry and next` for pending uploads only.
+- Save-and-next behavior:
+  - saves current upload entry
+  - opens next pending upload if one exists
+  - handles `409 ALREADY_SAVED` race by continuing to the next pending item
+  - redirects to `/uploads?status=pending_review&flash=saved_and_queue_empty` when none remain
+- Queue supports deterministic flash messaging via URL query:
+  - `flash=saved_and_opened_next`
+  - `flash=saved_and_queue_empty`
+- `/upload` now supports explicit capture-mode UX without forced review redirect after success:
+  - primary action remains upload next file
+  - secondary actions: review current upload now, open pending queue
+- Processing-mode queue UX now includes a clear primary CTA (`Review oldest pending`) when pending items exist.
 
 ## What remains
   - Implement next planned features:
-  - pending upload review queue (`006`): `/uploads` page, `GET /api/uploads`, and capture/processing guidance
   - AI extraction/review/save on top of the established review/save workflow (after `006`)
   - yearly overview
   - annual P&L
@@ -77,4 +101,3 @@
 
 ## Known issues / open questions
 - Product/spec open questions remain outside the active slices: future soft-delete/archive and pagination timing.
-- Current UX gap addressed by `006`: no dedicated list/queue page yet for discovering pending drafts without direct upload URLs.
