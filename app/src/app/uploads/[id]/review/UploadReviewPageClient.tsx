@@ -365,7 +365,7 @@ export function UploadReviewPageClient({
 
   return (
     <main className="min-h-screen bg-zinc-50 px-6 py-16 text-zinc-900">
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
         <header className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">Review Upload</h1>
@@ -416,163 +416,196 @@ export function UploadReviewPageClient({
           </p>
         </section>
 
-        <form onSubmit={handleSaveDraft} className="flex flex-col gap-4 rounded border border-zinc-300 bg-white p-4">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">Document date</span>
-            <input
-              type="date"
-              value={formState.documentDate}
-              onChange={(event) => {
-                setFormState((current) =>
-                  current ? { ...current, documentDate: event.target.value } : current,
-                );
-              }}
-              className="rounded border border-zinc-300 px-3 py-2"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">Counterparty name</span>
-            <input
-              type="text"
-              value={formState.counterpartyName}
-              onChange={(event) => {
-                setFormState((current) =>
-                  current ? { ...current, counterpartyName: event.target.value } : current,
-                );
-              }}
-              className="rounded border border-zinc-300 px-3 py-2"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">Booking text</span>
-            <textarea
-              value={formState.bookingText}
-              onChange={(event) => {
-                setFormState((current) =>
-                  current ? { ...current, bookingText: event.target.value } : current,
-                );
-              }}
-              className="min-h-28 rounded border border-zinc-300 px-3 py-2"
-            />
-          </label>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Amount gross (cents)</span>
-              <input
-                type="number"
-                step="1"
-                value={formState.amountGross}
-                onChange={(event) => {
-                  setFormState((current) =>
-                    current ? { ...current, amountGross: event.target.value } : current,
-                  );
-                }}
-                className="rounded border border-zinc-300 px-3 py-2"
-              />
-            </label>
-
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Amount net (cents)</span>
-              <input
-                type="number"
-                step="1"
-                value={formState.amountNet}
-                onChange={(event) => {
-                  setFormState((current) =>
-                    current ? { ...current, amountNet: event.target.value } : current,
-                  );
-                }}
-                className="rounded border border-zinc-300 px-3 py-2"
-              />
-            </label>
-
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Amount tax (cents)</span>
-              <input
-                type="number"
-                step="1"
-                value={formState.amountTax}
-                onChange={(event) => {
-                  setFormState((current) =>
-                    current ? { ...current, amountTax: event.target.value } : current,
-                  );
-                }}
-                className="rounded border border-zinc-300 px-3 py-2"
-              />
-            </label>
-          </div>
-
-          {isExpense ? (
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Expense type</span>
-              <select
-                value={formState.typeOfExpenseId}
-                onChange={(event) => {
-                  setFormState((current) =>
-                    current ? { ...current, typeOfExpenseId: event.target.value } : current,
-                  );
-                }}
-                className="rounded border border-zinc-300 px-3 py-2"
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <section className="order-1 flex flex-col gap-3 rounded border border-zinc-300 bg-white p-4">
+            <h2 className="text-sm font-semibold text-zinc-900">Source PDF</h2>
+            <p className="text-sm text-zinc-600">
+              If your browser cannot render the PDF inline, use the fallback actions below.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href={`/api/uploads/${uploadId}/file`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
               >
-                <option value="">Select expense type</option>
-                {expenseTypes.map((expenseType) => (
-                  <option key={expenseType.id} value={expenseType.id}>
-                    {expenseType.expenseTypeText}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
+                Open PDF in new tab
+              </Link>
+              <Link
+                href={`/api/uploads/${uploadId}/file?download=1`}
+                className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
+              >
+                Download PDF
+              </Link>
+            </div>
+            <iframe
+              title={`Source PDF for upload ${uploadId}`}
+              src={`/api/uploads/${uploadId}/file`}
+              className="h-[60vh] w-full rounded border border-zinc-300 bg-zinc-50"
+            />
+          </section>
+
+          <form
+            onSubmit={handleSaveDraft}
+            className="order-2 flex flex-col gap-4 rounded border border-zinc-300 bg-white p-4"
+          >
             <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Payment received date</span>
+              <span className="font-medium">Document date</span>
               <input
                 type="date"
-                value={formState.paymentReceivedDate}
+                value={formState.documentDate}
                 onChange={(event) => {
                   setFormState((current) =>
-                    current ? { ...current, paymentReceivedDate: event.target.value } : current,
+                    current ? { ...current, documentDate: event.target.value } : current,
                   );
                 }}
                 className="rounded border border-zinc-300 px-3 py-2"
               />
             </label>
-          )}
 
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="submit"
-              disabled={isSavingDraft}
-              className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSavingDraft ? "Saving draft..." : "Save draft"}
-            </button>
-            {reviewData.reviewStatus === "pending_review" ? (
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium">Counterparty name</span>
+              <input
+                type="text"
+                value={formState.counterpartyName}
+                onChange={(event) => {
+                  setFormState((current) =>
+                    current ? { ...current, counterpartyName: event.target.value } : current,
+                  );
+                }}
+                className="rounded border border-zinc-300 px-3 py-2"
+              />
+            </label>
+
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium">Booking text</span>
+              <textarea
+                value={formState.bookingText}
+                onChange={(event) => {
+                  setFormState((current) =>
+                    current ? { ...current, bookingText: event.target.value } : current,
+                  );
+                }}
+                className="min-h-28 rounded border border-zinc-300 px-3 py-2"
+              />
+            </label>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">Amount gross (cents)</span>
+                <input
+                  type="number"
+                  step="1"
+                  value={formState.amountGross}
+                  onChange={(event) => {
+                    setFormState((current) =>
+                      current ? { ...current, amountGross: event.target.value } : current,
+                    );
+                  }}
+                  className="rounded border border-zinc-300 px-3 py-2"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">Amount net (cents)</span>
+                <input
+                  type="number"
+                  step="1"
+                  value={formState.amountNet}
+                  onChange={(event) => {
+                    setFormState((current) =>
+                      current ? { ...current, amountNet: event.target.value } : current,
+                    );
+                  }}
+                  className="rounded border border-zinc-300 px-3 py-2"
+                />
+              </label>
+
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">Amount tax (cents)</span>
+                <input
+                  type="number"
+                  step="1"
+                  value={formState.amountTax}
+                  onChange={(event) => {
+                    setFormState((current) =>
+                      current ? { ...current, amountTax: event.target.value } : current,
+                    );
+                  }}
+                  className="rounded border border-zinc-300 px-3 py-2"
+                />
+              </label>
+            </div>
+
+            {isExpense ? (
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">Expense type</span>
+                <select
+                  value={formState.typeOfExpenseId}
+                  onChange={(event) => {
+                    setFormState((current) =>
+                      current ? { ...current, typeOfExpenseId: event.target.value } : current,
+                    );
+                  }}
+                  className="rounded border border-zinc-300 px-3 py-2"
+                >
+                  <option value="">Select expense type</option>
+                  {expenseTypes.map((expenseType) => (
+                    <option key={expenseType.id} value={expenseType.id}>
+                      {expenseType.expenseTypeText}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">Payment received date</span>
+                <input
+                  type="date"
+                  value={formState.paymentReceivedDate}
+                  onChange={(event) => {
+                    setFormState((current) =>
+                      current ? { ...current, paymentReceivedDate: event.target.value } : current,
+                    );
+                  }}
+                  className="rounded border border-zinc-300 px-3 py-2"
+                />
+              </label>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="submit"
+                disabled={isSavingDraft}
+                className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingDraft ? "Saving draft..." : "Save draft"}
+              </button>
+              {reviewData.reviewStatus === "pending_review" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleSaveEntry({ andNext: true });
+                  }}
+                  disabled={isSavingEntry || isSavingEntryAndNext}
+                  className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-500"
+                >
+                  {isSavingEntryAndNext ? "Saving and opening next..." : "Save entry and next"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => {
-                  void handleSaveEntry({ andNext: true });
+                  void handleSaveEntry({ andNext: false });
                 }}
                 disabled={isSavingEntry || isSavingEntryAndNext}
-                className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-500"
+                className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isSavingEntryAndNext ? "Saving and opening next..." : "Save entry and next"}
+                {isSavingEntry ? "Saving entry..." : "Save entry"}
               </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => {
-                void handleSaveEntry({ andNext: false });
-              }}
-              disabled={isSavingEntry || isSavingEntryAndNext}
-              className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSavingEntry ? "Saving entry..." : "Save entry"}
-            </button>
-          </div>
-        </form>
+            </div>
+          </form>
+        </div>
       </div>
     </main>
   );
