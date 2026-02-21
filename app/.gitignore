@@ -42,3 +42,6 @@ next-env.d.ts
 
 # pdf upload folder
 /upload
+
+# sqlite database
+app.db
