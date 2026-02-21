@@ -12,6 +12,8 @@ The UX must guide users through two explicit workflows:
 - Capture mode: quickly upload many documents.
 - Processing mode: review and finalize pending uploads until queue is empty.
 
+In both workflows, each screen must expose a single clear primary next action so users always know what to do next.
+
 ## 2) Scope (In / Out)
 
 ### In
@@ -48,6 +50,7 @@ The UX must guide users through two explicit workflows:
 
 - Pending uploads first.
 - Within each status group: oldest first by `uploadedAt` ascending.
+- Deterministic tie-breaker: `id` ascending.
 
 4. Default filtering
 
@@ -67,12 +70,32 @@ The UX must guide users through two explicit workflows:
 - Existing `Save draft` and `Save entry` behavior remains valid.
 - `Save entry` default redirect remains `/entries`.
 - `Save entry and next` is additive.
+- `POST /api/uploads` response contract remains unchanged.
+- Upload page redirect behavior is intentionally adjusted in this slice for capture-mode UX (see UI section 5.4).
 
 7. User guidance and next action clarity
 
 - Every key screen must present a clear primary next action.
 - The UI must keep users oriented in either capture mode or processing mode.
 - Empty/complete states must explain what to do next (not only what happened).
+
+8. Saved-item behavior in queue/review
+
+- `pending_review` items use action label `Review` and route to `/uploads/{id}/review`.
+- `saved` items use action label `View entry`; they do not route to editable review flow.
+- Editing finalized accounting entries remains out of scope.
+
+9. Save-and-next behavior on already-saved conflicts
+
+- `Save entry and next` is shown only for pending-review items.
+- If save returns `409 ALREADY_SAVED` due to race/concurrent action, client treats it as already-completed and continues to next pending item.
+
+10. Queue flash-message contract
+
+- Queue page supports deterministic query-param flash messages:
+  - `flash=saved_and_opened_next`
+  - `flash=saved_and_queue_empty`
+- Queue UI maps each flash key to a user-facing success banner.
 
 ---
 
@@ -134,6 +157,7 @@ Deterministic codes:
 
 - `INVALID_ACTIVE_COMPANY` (`409`)
 - `VALIDATION_ERROR` (`400`)
+- `UPLOAD_LIST_FAILED` (`500`)
 
 ### 4.2 Next-pending lookup (internal behavior)
 
@@ -142,6 +166,10 @@ Deterministic codes:
   - call `GET /api/uploads?status=pending_review`,
   - skip current upload id,
   - redirect to first remaining item.
+
+### 4.3 Field semantics
+
+- `savedEntry.createdAt` is sourced from `accounting_entries.created_at` and returned as ISO-8601 UTC string.
 
 ---
 
@@ -158,7 +186,8 @@ Deterministic codes:
     - `originalFilename`
     - `entryType`
     - `reviewStatus`
-    - action button (`Review` or `Open`)
+    - action button (`Review` for pending, `View entry` for saved)
+- If URL `status` query is invalid in UI routing, normalize client-side to `status=pending_review` (API still validates and returns `400` for invalid direct calls).
 
 ### 5.2 Review page additions
 
@@ -166,7 +195,8 @@ Deterministic codes:
 - Keep existing `Save draft` and `Save entry`.
 - On successful save-and-next:
   - redirect to next pending upload review.
-  - if no pending items remain, redirect to `/uploads?status=pending_review` with success message.
+- if no pending items remain, redirect to `/uploads?status=pending_review` with success message.
+- `Save entry and next` is available only for pending-review uploads.
 
 ### 5.3 Navigation updates
 
@@ -176,15 +206,20 @@ Deterministic codes:
 ### 5.4 Workflow UX requirements
 
 - Capture mode:
-  - Upload page keeps focus on quick repeated uploads.
-  - After upload success, user can immediately choose:
-    - continue review now,
-    - save draft and upload next,
-    - return to pending queue.
+  - Upload page keeps focus on quick repeated uploads (no forced redirect into review).
+  - After upload success, page stays on `/upload`.
+  - Success state must expose:
+    - primary action: upload next file,
+    - secondary action: review this upload now,
+    - secondary action: go to pending queue.
 - Processing mode:
   - Queue page highlights pending items and provides a clear next item to process.
-  - Review page provides a primary completion path (`Save entry and next`).
+  - Review page provides primary completion path (`Save entry and next`), with `Save draft` as secondary.
   - When queue becomes empty, UI confirms completion and guides user to next useful action (for example: upload new files or view entries).
+- Mode orientation:
+  - `/upload` header indicates capture mode.
+  - `/uploads` and `/uploads/[id]/review` indicate processing mode.
+  - Each screen has exactly one visually dominant primary CTA.
 
 ---
 
@@ -211,11 +246,17 @@ No schema changes required.
 - [ ] Default queue view shows only `pending_review` items.
 - [ ] Queue sorting is deterministic: pending first, oldest first within status.
 - [ ] Queue rows navigate to `/uploads/{id}/review`.
+- [ ] Queue row/action behavior is status-specific: pending => `Review`; saved => `View entry`.
 - [ ] `Save entry and next` saves current upload and opens next pending one.
+- [ ] `Save entry and next` is not shown for already-saved uploads.
+- [ ] On `409 ALREADY_SAVED` during save-and-next, flow continues to next pending item.
 - [ ] If no pending uploads remain after save-and-next, user lands on `/uploads?status=pending_review`.
 - [ ] Existing `Save draft` and `Save entry` flows from `005` continue to work.
 - [ ] Upload/review/queue screens each expose a clear primary next action (capture mode or processing mode).
 - [ ] Empty queue state clearly guides the user to the next step.
+- [ ] `/upload` supports capture mode without forced review redirect and provides direct actions for review-now and queue.
+- [ ] Queue/list ordering is deterministic with tie-breaker (`uploadedAt ASC`, `id ASC` within status bucket).
+- [ ] Queue page supports deterministic flash messages for post-save-and-next outcomes.
 
 ---
 
