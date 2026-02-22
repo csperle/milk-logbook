@@ -30,6 +30,22 @@ type AccountingEntrySummaryRow = {
   created_at: string;
 };
 
+export type AnnualPlEntry = {
+  documentYear: number;
+  entryType: UploadEntryType;
+  amountGross: number;
+  typeOfExpenseId: number | null;
+  expenseTypeText: string | null;
+};
+
+type AnnualPlEntryRow = {
+  document_year: number;
+  entry_type: UploadEntryType;
+  amount_gross: number;
+  type_of_expense_id: number | null;
+  expense_type_text: string | null;
+};
+
 export type CreatedPlaceholderEntry = {
   id: number;
   documentNumber: number;
@@ -183,6 +199,34 @@ export function listAccountingEntriesByCompanyId(companyId: number): AccountingE
     .all(companyId) as AccountingEntrySummaryRow[];
 
   return rows.map(mapAccountingEntrySummary);
+}
+
+export function listAnnualPlEntriesByCompanyId(companyId: number): AnnualPlEntry[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `
+        SELECT
+          accounting_entries.document_year,
+          accounting_entries.entry_type,
+          accounting_entries.amount_gross,
+          accounting_entries.type_of_expense_id,
+          expense_types.expense_type_text
+        FROM accounting_entries
+        LEFT JOIN expense_types
+          ON expense_types.id = accounting_entries.type_of_expense_id
+        WHERE accounting_entries.company_id = ?
+      `,
+    )
+    .all(companyId) as AnnualPlEntryRow[];
+
+  return rows.map((row) => ({
+    documentYear: row.document_year,
+    entryType: row.entry_type,
+    amountGross: row.amount_gross,
+    typeOfExpenseId: row.type_of_expense_id,
+    expenseTypeText: row.expense_type_text,
+  }));
 }
 
 export type SaveEntryFromUploadResult =

@@ -1,6 +1,6 @@
 # 009-annual-pl-view-in-app
 
-- Status: Draft (pre-implementation decisions resolved)
+- Status: Implemented (pending product sign-off)
 
 ## 1) Goal
 
@@ -111,19 +111,19 @@ Provide a company-scoped, in-app annual profit-and-loss (P&L) view so users can 
 
 ## 6) Acceptance criteria (checkboxes)
 
-- [ ] `/reports/annual-pl` renders for valid active company context.
-- [ ] `/reports/annual-pl` remains protected by existing active-company guard behavior.
-- [ ] Year selector is visible, required, and defaults to latest available year (or current UTC year when no entries exist).
-- [ ] Selected year is persisted in URL query param `year` and restored on reload.
-- [ ] KPI cards show selected-year totals for income, expenses, and annual result.
-- [ ] Expense breakdown lists selected-year expense totals grouped by expense type.
-- [ ] Expense breakdown includes `Unassigned` bucket when null expense type references exist in selected year.
-- [ ] Breakdown row ordering is deterministic (amount desc, then expenseTypeText asc, then typeOfExpenseId asc, null last).
-- [ ] Breakdown shows `Share of total expenses` for each row.
-- [ ] Negative expense amounts are shown as-is and flagged with a `Negative amount` warning label.
-- [ ] Empty-state messaging is shown when selected year has no entries.
-- [ ] Navigation link from `/` to `/reports/annual-pl` is visible.
-- [ ] Page is usable on mobile and desktop layouts.
+- [x] `/reports/annual-pl` renders for valid active company context.
+- [x] `/reports/annual-pl` remains protected by existing active-company guard behavior.
+- [x] Year selector is visible, required, and defaults to latest available year (or current UTC year when no entries exist).
+- [x] Selected year is persisted in URL query param `year` and restored on reload.
+- [x] KPI cards show selected-year totals for income, expenses, and annual result.
+- [x] Expense breakdown lists selected-year expense totals grouped by expense type.
+- [x] Expense breakdown includes `Unassigned` bucket when null expense type references exist in selected year.
+- [x] Breakdown row ordering is deterministic (amount desc, then expenseTypeText asc, then typeOfExpenseId asc, null last).
+- [x] Breakdown shows `Share of total expenses` for each row.
+- [x] Negative expense amounts are shown as-is and flagged with a `Negative amount` warning label.
+- [x] Empty-state messaging is shown when selected year has no entries.
+- [x] Navigation link from `/` to `/reports/annual-pl` is visible.
+- [x] Page is usable on mobile and desktop layouts.
 - [ ] `npm run lint` and `npm run build` pass after this slice.
 
 ## 7) Pre-implementation decisions (resolved)
@@ -134,3 +134,16 @@ Provide a company-scoped, in-app annual profit-and-loss (P&L) view so users can 
 - [x] Canonical year source: use `accounting_entries.document_year` for year list/filtering; use `document_date` only for display contexts.
 - [x] Unassigned policy: support and render `Unassigned` only when selected-year data contains null `type_of_expense_id`.
 - [x] Precision policy: compute with integer cents in this slice to avoid floating-point drift and keep totals deterministic.
+
+## 8) Implementation details (current)
+
+Implemented route and UI:
+- `src/app/reports/annual-pl/page.tsx`
+- `src/app/reports/annual-pl/AnnualPlPageClient.tsx`
+
+Implemented data access:
+- Added `listAnnualPlEntriesByCompanyId(companyId)` and `AnnualPlEntry` in `src/lib/accounting-entries-repo.ts`
+- Query uses `accounting_entries.document_year` as canonical year source and left-joins `expense_types` for breakdown labels.
+
+Implemented overview navigation entry:
+- Added `Annual P&L` action in `src/app/YearlyOverviewClient.tsx` linking to `/reports/annual-pl`.
