@@ -1,8 +1,10 @@
 # Project State
 
 - Last updated date: 2026-02-22
-- Current goal: implement the next planned features after slice `008-yearly-overview-default-home`.
-- Active feature spec(s): `008-yearly-overview-default-home` (implemented, pending product sign-off).
+- Current goal: implement vertical slice `009-annual-pl-view-in-app`.
+- Active feature spec(s):
+  - `009-annual-pl-view-in-app`
+  - `008-yearly-overview-default-home` (implemented, pending product sign-off)
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -110,9 +112,10 @@
 - Overview filter/sort state is persisted in URL query params (`year`, `type`, `sort`) and restored on reload.
 
 ## What remains
-  - Implement next planned features:
-  - AI extraction/review/save on top of the established review/save workflow
-  - annual P&L
+- Implement next planned features:
+- `009-annual-pl-view-in-app` (in-app annual P&L view; no export)
+- AI extraction/review/save on top of the established review/save workflow
+- Annual P&L export/generation workflow
 
 ## How to run (dev/validation)
 - Dev server: `npm run dev`
