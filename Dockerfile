@@ -1,28 +1,38 @@
+# Debian stable
 FROM node:20-trixie-slim
 
-# Basics, die Codex/Dev brauchen
-RUN apt-get update && apt-get install -y \
-    git bash ca-certificates curl \
-    python3 make g++ procps ripgrep \
-  && rm -rf /var/lib/apt/lists/*
+# codex version (can be overridden at build time)
+ARG CODEX_VERSION=0.104.0
 
-# user-local npm prefix
-ENV HOME=/home/node
-ENV NPM_CONFIG_PREFIX=/home/node/.npm-global
-ENV PATH=/home/node/.npm-global/bin:$PATH
+# Avoid interactive apt prompts
+ENV DEBIAN_FRONTEND=noninteractive
 
-# Verzeichnisse anlegen, Meine Custom Prompts in den Container kopieren und Rechte setzen
-RUN mkdir -p /home/node/.npm-global /home/node/.codex /workspace
-COPY .codex/prompts /home/node/.codex/prompts
-RUN chown -R node:node /home/node /workspace
+# HOME, PATH and user-local npm prefix
+ENV HOME=/home/node \
+    PATH=/home/node/.npm-global/bin:$PATH \
+    NPM_CONFIG_PREFIX=/home/node/.npm-global \
+    NPM_CONFIG_UPDATE_NOTIFIER=false \
+    NPM_CONFIG_FUND=false \
+    NPM_CONFIG_AUDIT=false
 
-# ab hier als user node weiter, damit später auch Updates/Schreiben gehen
+# Install without recommended extras
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git bash ca-certificates curl \
+      python3 make g++ procps ripgrep \
+      tini \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create dirs (root) and chown to node
+RUN mkdir -p /home/node/.npm-global /home/node/.codex /workspace \
+    && chown -R node:node /home/node /workspace
+
 USER node
 
-# Codex CLI installieren (offiziell via npm)
-RUN npm install -g @openai/codex@latest
+# Install Codex CLI
+RUN npm install -g @openai/codex@${CODEX_VERSION} \
+ && npm cache clean --force
 
 WORKDIR /workspace
 
-EXPOSE 3000
+ENTRYPOINT ["tini", "--"]
 CMD ["bash"]
