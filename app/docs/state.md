@@ -1,8 +1,8 @@
 # Project State
 
 - Last updated date: 2026-02-22
-- Current goal: implement vertical slice `008-yearly-overview-default-home`.
-- Active feature spec(s): `008-yearly-overview-default-home`.
+- Current goal: implement the next planned features after slice `008-yearly-overview-default-home`.
+- Active feature spec(s): `008-yearly-overview-default-home` (implemented, pending product sign-off).
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -99,11 +99,19 @@
   - fallback actions `Open PDF in new tab` and `Download PDF`
   - responsive default layout (stacked below `lg`, side-by-side at `lg` and above)
 - PDF preview/fallback is available for both `pending_review` and `saved` upload review statuses.
+- Yearly overview default-home slice (`008-yearly-overview-default-home`) is implemented.
+- Root route (`/`) now renders a company-scoped yearly overview dashboard when active company context is valid.
+- Overview UI includes:
+  - selected-year KPI totals (income, expenses, result)
+  - filter controls (`year`, `type`)
+  - deterministic sort control (`documentDate`, `amount`, `documentNumber`, asc/desc)
+  - workflow actions (`Upload invoice`, `Open queue`, `Switch company`)
+  - source-file links for opening stored PDFs
+- Overview filter/sort state is persisted in URL query params (`year`, `type`, `sort`) and restored on reload.
 
 ## What remains
   - Implement next planned features:
   - AI extraction/review/save on top of the established review/save workflow
-  - yearly overview
   - annual P&L
 
 ## How to run (dev/validation)

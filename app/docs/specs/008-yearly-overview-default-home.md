@@ -138,16 +138,16 @@ Implemented draft UI code:
 
 ## 7) Acceptance criteria
 
-- [ ] `/` shows yearly overview dashboard when active company is valid.
-- [ ] `/` remains protected by active-company guard behavior.
-- [ ] Dashboard shows selected-year totals for income, expenses, and result.
-- [ ] Year filter is present and defaults to latest available year.
-- [ ] Type filter supports `all`, `income`, `expense`.
-- [ ] Sort control supports document date, amount, and document number (asc/desc).
-- [ ] Entries table updates deterministically when filters/sort change.
-- [ ] Empty-state message is shown when no entries match filters.
-- [ ] Workflow actions (`Upload invoice`, `Open queue`, `Switch company`) are visible on overview.
-- [ ] Layout is usable on mobile (stacked) and desktop (wide table/cards).
+- [x] `/` shows yearly overview dashboard when active company is valid.
+- [x] `/` remains protected by active-company guard behavior.
+- [x] Dashboard shows selected-year totals for income, expenses, and result.
+- [x] Year filter is present and defaults to latest available year.
+- [x] Type filter supports `all`, `income`, `expense`.
+- [x] Sort control supports document date, amount, and document number (asc/desc).
+- [x] Entries table updates deterministically when filters/sort change.
+- [x] Empty-state message is shown when no entries match filters.
+- [x] Workflow actions (`Upload invoice`, `Open queue`, `Switch company`) are visible on overview.
+- [x] Layout is usable on mobile (stacked) and desktop (wide table/cards).
 
 ## 8) Pre-implementation decisions (resolved)
 
@@ -176,6 +176,6 @@ This section resolves the open questions for `008` so implementation can proceed
 
 ## 9) Acceptance criteria clarifications
 
-- [ ] KPI cards recompute from the same filtered dataset used by the table (`year` + `type`).
-- [ ] `year`, `type`, and `sort` are reflected in URL query params and restored on reload.
-- [ ] `Source file` column shows original filename and supports opening the stored PDF.
+- [x] KPI cards recompute from the same filtered dataset used by the table (`year` + `type`).
+- [x] `year`, `type`, and `sort` are reflected in URL query params and restored on reload.
+- [x] `Source file` column shows original filename and supports opening the stored PDF.

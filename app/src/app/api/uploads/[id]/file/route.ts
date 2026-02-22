@@ -114,7 +114,10 @@ export async function GET(request: Request, { params }: Params) {
   headers.set("Cache-Control", "private, max-age=120");
   headers.set("Vary", "Cookie");
 
-  return new NextResponse(fileContent, {
+  const fileBytes = new Uint8Array(fileContent.byteLength);
+  fileBytes.set(fileContent);
+
+  return new NextResponse(fileBytes.buffer, {
     status: 200,
     headers,
   });
