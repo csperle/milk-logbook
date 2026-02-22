@@ -5,6 +5,7 @@ import type { UploadReviewDraft } from "@/lib/upload-review-repo";
 export type AccountingEntrySummary = {
   id: number;
   companyId: number;
+  uploadId: string;
   documentNumber: number;
   entryType: UploadEntryType;
   documentDate: string;
@@ -18,6 +19,7 @@ export type AccountingEntrySummary = {
 type AccountingEntrySummaryRow = {
   id: number;
   company_id: number;
+  upload_id: string;
   document_number: number;
   entry_type: UploadEntryType;
   document_date: string;
@@ -46,6 +48,7 @@ function mapAccountingEntrySummary(row: AccountingEntrySummaryRow): AccountingEn
   return {
     id: row.id,
     companyId: row.company_id,
+    uploadId: row.upload_id,
     documentNumber: row.document_number,
     entryType: row.entry_type,
     documentDate: row.document_date,
@@ -161,6 +164,7 @@ export function listAccountingEntriesByCompanyId(companyId: number): AccountingE
         SELECT
           accounting_entries.id,
           accounting_entries.company_id,
+          accounting_entries.upload_id,
           accounting_entries.document_number,
           accounting_entries.entry_type,
           accounting_entries.document_date,
@@ -280,6 +284,7 @@ export function saveAccountingEntryFromUploadReview(input: {
       return {
         id: row.id,
         companyId: row.company_id,
+        uploadId: input.uploadId,
         documentNumber: row.document_number,
         entryType: row.entry_type,
         documentDate: row.document_date,
