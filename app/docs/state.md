@@ -1,8 +1,8 @@
 # Project State
 
-- Last updated date: 2026-02-21
-- Current goal: prepare/implement the next vertical slice after `007` (AI extraction on review/save workflow).
-- Active feature spec(s): none currently selected.
+- Last updated date: 2026-02-22
+- Current goal: implement vertical slice `008-yearly-overview-default-home`.
+- Active feature spec(s): `008-yearly-overview-default-home`.
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
