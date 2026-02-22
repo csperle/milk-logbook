@@ -131,7 +131,7 @@ This slice uses deterministic dummy prefill values (no AI extraction yet) and al
 
 17. Post-save navigation
 
-- After successful `Save entry`, client redirects to `/entries`.
+- After successful `Save entry`, client redirects to `/` (yearly overview).
 - UI should show a success message including assigned `documentNumber`.
 
 18. Save-entry action persists current form snapshot
@@ -285,17 +285,16 @@ Deterministic codes for this slice:
   - `Save draft` (calls `PUT /api/uploads/:id/review`)
   - `Save entry` (calls `POST /api/uploads/:id/save`)
   - `Save entry` first persists current form state via `PUT /api/uploads/:id/review`, then calls `POST /api/uploads/:id/save`
-  - on success, redirect to `/entries` and show success message with `documentNumber`
+  - on success, redirect to `/` and show success message with `documentNumber`
 
 ### 5.2 Upload page behavior
 
 - On successful upload, redirect to `/uploads/{uploadId}/review`.
 - Success message may still be shown briefly before redirect.
 
-### 5.3 Entries list
+### 5.3 Overview list
 
-- Remains at `/entries`.
-- Lists only saved `accounting_entries`.
+- Saved entries are visible in the yearly overview at `/`.
 
 ---
 
@@ -332,10 +331,10 @@ Deterministic codes for this slice:
 - [ ] Save enforces income/expense conditional requiredness.
 - [ ] Double-save on same upload is rejected with `409 ALREADY_SAVED`.
 - [ ] Concurrent final-save attempts on same upload resolve deterministically (`1x success`, others `409 ALREADY_SAVED`).
-- [ ] `/entries` lists only saved entries.
+- [ ] Saved entries are visible in yearly overview at `/`.
 - [ ] Missing/out-of-scope upload access returns `404 UPLOAD_NOT_FOUND`.
 - [ ] `PUT /api/uploads/:id/review` preserves omitted fields and validates strict JSON types without coercion.
-- [ ] After successful `Save entry`, user is redirected to `/entries` with success feedback including `documentNumber`.
+- [ ] After successful `Save entry`, user is redirected to `/` with success feedback including `documentNumber`.
 - [ ] `Save entry` works with unsaved in-form changes (no mandatory prior `Save draft` click).
 - [ ] Review UI initializes all amount inputs with zero values while keeping API default draft model unchanged.
 - [ ] No AI extraction is triggered in this slice.

@@ -58,10 +58,8 @@
   - income requires `paymentReceivedDate` and forbids `typeOfExpenseId`
   - expense requires valid `typeOfExpenseId` and forbids `paymentReceivedDate`
 - Double-save/concurrent save attempts are rejected deterministically with `409 ALREADY_SAVED`.
-- Booking entries list UI is available at `/entries` and is protected by active-company context guard.
 - Booking entries API endpoint exists: `GET /api/accounting-entries`.
 - `GET /api/accounting-entries` is company-scoped via active cookie and sorted by `created_at DESC, id DESC`.
-- Home page navigation includes `/entries`.
 - Pending upload review queue slice (`006-pending-upload-review-queue`) is implemented.
 - Upload queue UI is available at `/uploads` and is protected by active-company context guard.
 - Upload queue API endpoint exists: `GET /api/uploads`.
@@ -73,7 +71,7 @@
   - tie-breaker `id ASC`
 - Queue actions are status-specific:
   - pending items: `Review` -> `/uploads/{id}/review`
-  - saved items: `View entry` -> `/entries`
+  - saved items: `Open overview` -> `/`
 - Review page includes `Save entry and next` for pending uploads only.
 - Save-and-next behavior:
   - saves current upload entry

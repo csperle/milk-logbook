@@ -124,7 +124,7 @@
 
   ### Booking entries list
 
-  - New route: /entries
+  - New default list surface: `/` (yearly overview table)
   - Guarded by active company context.
   - Shows entries for active company.
   - Data source endpoint: GET /api/accounting-entries (company-scoped via active cookie), sorted by `createdAt DESC, id DESC`.
@@ -182,8 +182,8 @@
   - [ ] Created booking entry contains deterministic placeholder values defined in this spec.
   - [ ] documentNumber is assigned per (company, year, entryType) sequence starting at 1.
   - [ ] If entry creation fails, upload metadata and file are rolled back (no orphan upload).
-  - [ ] /entries route exists and lists booking entries for active company.
-  - [ ] /entries is guarded by active-company rules.
+  - [ ] `/` yearly overview lists booking entries for active company.
+  - [ ] `/` remains guarded by active-company rules.
   - [ ] List is sorted by newest (createdAt DESC).
   - [ ] No AI extraction is triggered in this slice.
 

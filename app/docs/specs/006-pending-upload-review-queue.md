@@ -68,7 +68,7 @@ In both workflows, each screen must expose a single clear primary next action so
 6. Compatibility with slice `005`
 
 - Existing `Save draft` and `Save entry` behavior remains valid.
-- `Save entry` default redirect remains `/entries`.
+- `Save entry` default redirect is `/` (yearly overview).
 - `Save entry and next` is additive.
 - `POST /api/uploads` response contract remains unchanged.
 - Upload page redirect behavior is intentionally adjusted in this slice for capture-mode UX (see UI section 5.4).
@@ -82,7 +82,7 @@ In both workflows, each screen must expose a single clear primary next action so
 8. Saved-item behavior in queue/review
 
 - `pending_review` items use action label `Review` and route to `/uploads/{id}/review`.
-- `saved` items use action label `View entry`; they do not route to editable review flow.
+- `saved` items use action label `Open overview` and route to `/`; they do not route to editable review flow.
 - Editing finalized accounting entries remains out of scope.
 
 9. Save-and-next behavior on already-saved conflicts
@@ -186,7 +186,7 @@ Deterministic codes:
     - `originalFilename`
     - `entryType`
     - `reviewStatus`
-    - action button (`Review` for pending, `View entry` for saved)
+    - action button (`Review` for pending, `Open overview` for saved)
 - If URL `status` query is invalid in UI routing, normalize client-side to `status=pending_review` (API still validates and returns `400` for invalid direct calls).
 
 ### 5.2 Review page additions
@@ -215,7 +215,7 @@ Deterministic codes:
 - Processing mode:
   - Queue page highlights pending items and provides a clear next item to process.
   - Review page provides primary completion path (`Save entry and next`), with `Save draft` as secondary.
-  - When queue becomes empty, UI confirms completion and guides user to next useful action (for example: upload new files or view entries).
+  - When queue becomes empty, UI confirms completion and guides user to next useful action (for example: upload new files or open yearly overview).
 - Mode orientation:
   - `/upload` header indicates capture mode.
   - `/uploads` and `/uploads/[id]/review` indicate processing mode.
@@ -246,7 +246,7 @@ No schema changes required.
 - [ ] Default queue view shows only `pending_review` items.
 - [ ] Queue sorting is deterministic: pending first, oldest first within status.
 - [ ] Queue rows navigate to `/uploads/{id}/review`.
-- [ ] Queue row/action behavior is status-specific: pending => `Review`; saved => `View entry`.
+- [ ] Queue row/action behavior is status-specific: pending => `Review`; saved => `Open overview`.
 - [ ] `Save entry and next` saves current upload and opens next pending one.
 - [ ] `Save entry and next` is not shown for already-saved uploads.
 - [ ] On `409 ALREADY_SAVED` during save-and-next, flow continues to next pending item.
