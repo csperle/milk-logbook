@@ -227,10 +227,10 @@ export function UploadsQueuePageClient({ activeCompanyId, activeCompanyName }: P
                 Upload files
               </Link>
               <Link
-                href="/entries"
+                href="/"
                 className="inline-flex items-center rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
               >
-                View entries
+                Open yearly overview
               </Link>
             </div>
           )}
@@ -271,10 +271,10 @@ export function UploadsQueuePageClient({ activeCompanyId, activeCompanyName }: P
                         </Link>
                       ) : (
                         <Link
-                          href="/entries"
+                          href="/"
                           className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
                         >
-                          View entry
+                          Open overview
                         </Link>
                       )}
                     </td>

@@ -321,9 +321,9 @@ export function UploadReviewPageClient({
       }
 
       setFeedbackMessage(
-        `Entry #${payload.entry.documentNumber} saved. Redirecting to booking entries...`,
+        `Entry #${payload.entry.documentNumber} saved. Redirecting to yearly overview...`,
       );
-      router.push("/entries");
+      router.push("/");
     } catch {
       setFeedbackMessage("Could not save entry.");
     } finally {
@@ -387,10 +387,10 @@ export function UploadReviewPageClient({
               Back to queue
             </Link>
             <Link
-              href="/entries"
+              href="/"
               className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
             >
-              View entries
+              Back to main page
             </Link>
           </div>
         </header>
