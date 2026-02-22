@@ -25,6 +25,12 @@ function getEntryYear(entry: AccountingEntrySummary): number {
   return Number.parseInt(entry.documentDate.slice(0, 4), 10);
 }
 
+function formatDocumentReference(entry: AccountingEntrySummary): string {
+  const prefix = entry.entryType === "income" ? "I" : "E";
+  const year = entry.documentDate.slice(0, 4);
+  return `${prefix}-${year}-${entry.documentNumber}`;
+}
+
 function parseEntryTypeFilter(value: string | null): EntryTypeFilter {
   if (value === "income" || value === "expense") {
     return value;
@@ -295,7 +301,7 @@ export function YearlyOverviewClient({
             <table className="min-w-full divide-y divide-zinc-200 text-sm">
               <thead className="bg-zinc-100 text-left text-xs uppercase tracking-wide text-zinc-600">
                 <tr>
-                  <th className="px-3 py-2">Doc #</th>
+                  <th className="px-3 py-2">Document ref</th>
                   <th className="px-3 py-2">Type</th>
                   <th className="px-3 py-2">Document date</th>
                   <th className="px-3 py-2">Counterparty</th>
@@ -306,7 +312,7 @@ export function YearlyOverviewClient({
               <tbody className="divide-y divide-zinc-200">
                 {filteredAndSortedEntries.map((entry) => (
                   <tr key={entry.id}>
-                    <td className="px-3 py-2 font-medium">{entry.documentNumber}</td>
+                    <td className="px-3 py-2 font-medium">{formatDocumentReference(entry)}</td>
                     <td className="px-3 py-2">
                       <span
                         className={`inline-flex rounded px-2 py-0.5 text-xs font-medium ${
