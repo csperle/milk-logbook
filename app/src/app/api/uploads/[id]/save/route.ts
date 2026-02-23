@@ -6,7 +6,6 @@ import {
   type AccountingEntrySummary,
 } from "@/lib/accounting-entries-repo";
 import { listCompanies } from "@/lib/companies-repo";
-import { expenseTypeExistsById } from "@/lib/expense-types-repo";
 import { getUploadReviewByUploadIdAndCompanyId } from "@/lib/upload-review-repo";
 
 export const runtime = "nodejs";
@@ -127,13 +126,6 @@ function validateSaveInput(input: {
       };
     }
 
-    if (!expenseTypeExistsById(input.draft.typeOfExpenseId)) {
-      return {
-        ok: false,
-        code: "EXPENSE_TYPE_NOT_FOUND",
-        message: "Referenced expense type was not found.",
-      };
-    }
   }
 
   return { ok: true };
@@ -201,6 +193,14 @@ export async function POST(_: Request, { params }: Params) {
     });
 
     if (!saveResult.ok) {
+      if (saveResult.reason === "expense_type_not_found") {
+        return errorResponse(
+          400,
+          "EXPENSE_TYPE_NOT_FOUND",
+          "Referenced expense type was not found.",
+        );
+      }
+
       return errorResponse(
         409,
         "ALREADY_SAVED",

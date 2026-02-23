@@ -10,6 +10,7 @@ export async function GET() {
 
 type CreateExpenseTypeBody = {
   expenseTypeText?: unknown;
+  plCategory?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -43,7 +44,36 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = createExpenseType(body.expenseTypeText);
+  const result = createExpenseType(
+    body.expenseTypeText,
+    typeof body.plCategory === "string" ? body.plCategory : null,
+  );
+
+  if (!result.ok && result.reason === "pl_category_required") {
+    return NextResponse.json(
+      {
+        error: {
+          code: "PL_CATEGORY_REQUIRED",
+          field: result.field,
+          message: result.message,
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  if (!result.ok && result.reason === "invalid_pl_category") {
+    return NextResponse.json(
+      {
+        error: {
+          code: "INVALID_PL_CATEGORY",
+          field: result.field,
+          message: result.message,
+        },
+      },
+      { status: 400 },
+    );
+  }
 
   if (!result.ok && result.reason === "validation") {
     return NextResponse.json(

@@ -6,9 +6,16 @@ import Link from "next/link";
 type ExpenseType = {
   id: number;
   expenseTypeText: string;
+  plCategory: ExpensePlCategory;
   createdAt: string;
   updatedAt: string;
 };
+
+type ExpensePlCategory =
+  | "direct_cost"
+  | "operating_expense"
+  | "financial_other"
+  | "tax";
 
 type ApiError = {
   error?: {
@@ -20,6 +27,12 @@ type ApiError = {
 
 const MAX_EXPENSE_TYPE_TEXT_LENGTH = 100;
 const DRAG_DROP_DATA_TYPE = "text/plain";
+const PL_CATEGORY_OPTIONS: Array<{ value: ExpensePlCategory; label: string }> = [
+  { value: "direct_cost", label: "Direct Costs" },
+  { value: "operating_expense", label: "Operating Expenses" },
+  { value: "financial_other", label: "Financial / Other" },
+  { value: "tax", label: "Taxes" },
+];
 
 type DropPosition = "before" | "after";
 
@@ -39,11 +52,17 @@ async function parseApiError(response: Response): Promise<string> {
 export function ExpenseTypesAdminClient() {
   const [expenseTypes, setExpenseTypes] = useState<ExpenseType[]>([]);
   const [expenseTypeText, setExpenseTypeText] = useState("");
+  const [plCategory, setPlCategory] = useState<ExpensePlCategory>("operating_expense");
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeletingById, setIsDeletingById] = useState<Record<number, boolean>>(
     {},
   );
+  const [isUpdatingById, setIsUpdatingById] = useState<Record<number, boolean>>({});
+  const [editingExpenseTypeId, setEditingExpenseTypeId] = useState<number | null>(null);
+  const [editingExpenseTypeText, setEditingExpenseTypeText] = useState("");
+  const [editingPlCategory, setEditingPlCategory] =
+    useState<ExpensePlCategory>("operating_expense");
   const [isReordering, setIsReordering] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [draggedExpenseTypeId, setDraggedExpenseTypeId] = useState<number | null>(
@@ -118,7 +137,7 @@ export function ExpenseTypesAdminClient() {
       const response = await fetch("/api/expense-types", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ expenseTypeText }),
+        body: JSON.stringify({ expenseTypeText, plCategory }),
       });
 
       if (!response.ok) {
@@ -129,6 +148,7 @@ export function ExpenseTypesAdminClient() {
       const created = (await response.json()) as ExpenseType;
       setExpenseTypes((current) => [...current, created]);
       setExpenseTypeText("");
+      setPlCategory("operating_expense");
     } catch {
       setErrorMessage("Could not create expense type.");
     } finally {
@@ -165,6 +185,63 @@ export function ExpenseTypesAdminClient() {
       setErrorMessage("Could not delete expense type.");
     } finally {
       setIsDeletingById((current) => ({ ...current, [expenseType.id]: false }));
+    }
+  }
+
+  function handleStartEdit(expenseType: ExpenseType) {
+    setErrorMessage(null);
+    setEditingExpenseTypeId(expenseType.id);
+    setEditingExpenseTypeText(expenseType.expenseTypeText);
+    setEditingPlCategory(expenseType.plCategory);
+  }
+
+  function handleCancelEdit() {
+    setEditingExpenseTypeId(null);
+    setEditingExpenseTypeText("");
+    setEditingPlCategory("operating_expense");
+  }
+
+  async function handleUpdate(expenseType: ExpenseType) {
+    const trimmedText = editingExpenseTypeText.trim();
+    if (trimmedText.length < 1) {
+      setErrorMessage("Expense type text is required.");
+      return;
+    }
+
+    if (trimmedText.length > MAX_EXPENSE_TYPE_TEXT_LENGTH) {
+      setErrorMessage(
+        `Expense type text must be at most ${MAX_EXPENSE_TYPE_TEXT_LENGTH} characters.`,
+      );
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsUpdatingById((current) => ({ ...current, [expenseType.id]: true }));
+
+    try {
+      const response = await fetch(`/api/expense-types/${expenseType.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          expenseTypeText: trimmedText,
+          plCategory: editingPlCategory,
+        }),
+      });
+
+      if (!response.ok) {
+        setErrorMessage(await parseApiError(response));
+        return;
+      }
+
+      const updated = (await response.json()) as ExpenseType;
+      setExpenseTypes((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      handleCancelEdit();
+    } catch {
+      setErrorMessage("Could not update expense type.");
+    } finally {
+      setIsUpdatingById((current) => ({ ...current, [expenseType.id]: false }));
     }
   }
 
@@ -326,7 +403,7 @@ export function ExpenseTypesAdminClient() {
         <label htmlFor="expenseTypeText" className="text-sm font-medium">
           Expense type text
         </label>
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <input
             id="expenseTypeText"
             name="expenseTypeText"
@@ -334,9 +411,23 @@ export function ExpenseTypesAdminClient() {
             value={expenseTypeText}
             onChange={(event) => setExpenseTypeText(event.target.value)}
             maxLength={MAX_EXPENSE_TYPE_TEXT_LENGTH}
-            className="w-full rounded border border-zinc-300 px-3 py-2"
+            className="w-full rounded border border-zinc-300 px-3 py-2 sm:col-span-2"
             placeholder="e.g. Office Supplies"
           />
+          <select
+            value={plCategory}
+            onChange={(event) => setPlCategory(event.target.value as ExpensePlCategory)}
+            className="w-full rounded border border-zinc-300 px-3 py-2"
+            aria-label="P&L category"
+          >
+            {PL_CATEGORY_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
           <button
             type="submit"
             disabled={isSubmitDisabled}
@@ -385,7 +476,7 @@ export function ExpenseTypesAdminClient() {
                     showDropAfter ? "border-b-2 border-b-black" : ""
                   }`}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-1 items-center gap-3">
                     <button
                       type="button"
                       draggable={!isDragDisabled}
@@ -401,12 +492,77 @@ export function ExpenseTypesAdminClient() {
                         ))}
                       </span>
                     </button>
-                    <span>{expenseType.expenseTypeText}</span>
+                    {editingExpenseTypeId === expenseType.id ? (
+                      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
+                        <input
+                          type="text"
+                          value={editingExpenseTypeText}
+                          onChange={(event) => setEditingExpenseTypeText(event.target.value)}
+                          maxLength={MAX_EXPENSE_TYPE_TEXT_LENGTH}
+                          className="w-full rounded border border-zinc-300 px-3 py-1.5 text-sm"
+                        />
+                        <select
+                          value={editingPlCategory}
+                          onChange={(event) =>
+                            setEditingPlCategory(event.target.value as ExpensePlCategory)
+                          }
+                          className="w-full rounded border border-zinc-300 px-3 py-1.5 text-sm"
+                        >
+                          {PL_CATEGORY_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col">
+                        <span>{expenseType.expenseTypeText}</span>
+                        <span className="text-xs text-zinc-500">
+                          {
+                            PL_CATEGORY_OPTIONS.find(
+                              (option) => option.value === expenseType.plCategory,
+                            )?.label
+                          }
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
+                    {editingExpenseTypeId === expenseType.id ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={Boolean(isUpdatingById[expenseType.id])}
+                          onClick={() => {
+                            void handleUpdate(expenseType);
+                          }}
+                          className="rounded border border-zinc-300 px-3 py-1 text-sm disabled:cursor-not-allowed disabled:text-zinc-400"
+                        >
+                          {isUpdatingById[expenseType.id] ? "Saving..." : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={Boolean(isUpdatingById[expenseType.id])}
+                          onClick={handleCancelEdit}
+                          className="rounded border border-zinc-300 px-3 py-1 text-sm disabled:cursor-not-allowed disabled:text-zinc-400"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={isDeleting || isReordering}
+                        onClick={() => handleStartEdit(expenseType)}
+                        className="rounded border border-zinc-300 px-3 py-1 text-sm disabled:cursor-not-allowed disabled:text-zinc-400"
+                      >
+                        Edit
+                      </button>
+                    )}
                     <button
                       type="button"
-                      disabled={isDeleting || isReordering}
+                      disabled={isDeleting || isReordering || Boolean(isUpdatingById[expenseType.id])}
                       onClick={() => {
                         void handleDelete(expenseType);
                       }}

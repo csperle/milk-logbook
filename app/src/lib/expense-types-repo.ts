@@ -1,10 +1,19 @@
 import { getDb } from "@/lib/db";
 
 export const MAX_EXPENSE_TYPE_TEXT_LENGTH = 100;
+export const EXPENSE_PL_CATEGORIES = [
+  "direct_cost",
+  "operating_expense",
+  "financial_other",
+  "tax",
+] as const;
+
+export type ExpensePlCategory = (typeof EXPENSE_PL_CATEGORIES)[number];
 
 export type ExpenseType = {
   id: number;
   expenseTypeText: string;
+  plCategory: ExpensePlCategory;
   createdAt: string;
   updatedAt: string;
 };
@@ -12,6 +21,7 @@ export type ExpenseType = {
 type ExpenseTypeRow = {
   id: number;
   expense_type_text: string;
+  pl_category: ExpensePlCategory;
   sort_order: number;
   created_at: string;
   updated_at: string;
@@ -20,12 +30,22 @@ type ExpenseTypeRow = {
 type CreateExpenseTypeResult =
   | { ok: true; value: ExpenseType }
   | { ok: false; reason: "validation"; field: "expenseTypeText"; message: string }
+  | { ok: false; reason: "pl_category_required"; field: "plCategory"; message: string }
+  | { ok: false; reason: "invalid_pl_category"; field: "plCategory"; message: string }
   | { ok: false; reason: "duplicate"; field: "expenseTypeText"; message: string };
 
 type DeleteExpenseTypeResult =
   | { ok: true }
   | { ok: false; reason: "not_found"; message: string }
   | { ok: false; reason: "conflict"; message: string };
+
+type UpdateExpenseTypeResult =
+  | { ok: true; value: ExpenseType }
+  | { ok: false; reason: "not_found"; message: string }
+  | { ok: false; reason: "validation"; field: "expenseTypeText"; message: string }
+  | { ok: false; reason: "pl_category_required"; field: "plCategory"; message: string }
+  | { ok: false; reason: "invalid_pl_category"; field: "plCategory"; message: string }
+  | { ok: false; reason: "duplicate"; field: "expenseTypeText"; message: string };
 
 type ReorderExpenseTypesResult =
   | { ok: true }
@@ -35,10 +55,15 @@ function normalizeExpenseTypeText(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function isExpensePlCategory(value: string): value is ExpensePlCategory {
+  return EXPENSE_PL_CATEGORIES.includes(value as ExpensePlCategory);
+}
+
 function mapExpenseType(row: ExpenseTypeRow): ExpenseType {
   return {
     id: row.id,
     expenseTypeText: row.expense_type_text,
+    plCategory: row.pl_category,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -49,7 +74,7 @@ export function listExpenseTypes(): ExpenseType[] {
   const rows = db
     .prepare(
       `
-        SELECT id, expense_type_text, sort_order, created_at, updated_at
+        SELECT id, expense_type_text, pl_category, sort_order, created_at, updated_at
         FROM expense_types
         ORDER BY sort_order ASC, id ASC
       `,
@@ -59,9 +84,30 @@ export function listExpenseTypes(): ExpenseType[] {
   return rows.map(mapExpenseType);
 }
 
-export function createExpenseType(rawText: string): CreateExpenseTypeResult {
+export function createExpenseType(
+  rawText: string,
+  rawPlCategory: string | null | undefined,
+): CreateExpenseTypeResult {
   const db = getDb();
   const trimmedText = rawText.trim();
+
+  if (typeof rawPlCategory !== "string") {
+    return {
+      ok: false,
+      reason: "pl_category_required",
+      field: "plCategory",
+      message: "plCategory is required.",
+    };
+  }
+
+  if (!isExpensePlCategory(rawPlCategory)) {
+    return {
+      ok: false,
+      reason: "invalid_pl_category",
+      field: "plCategory",
+      message: "plCategory must be a valid enum value.",
+    };
+  }
 
   if (trimmedText.length < 1) {
     return {
@@ -98,15 +144,17 @@ export function createExpenseType(rawText: string): CreateExpenseTypeResult {
         INSERT INTO expense_types (
           expense_type_text,
           normalized_text,
+          pl_category,
           sort_order,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?)
       `,
     );
     const result = insert.run(
       trimmedText,
       normalizedText,
+      rawPlCategory,
       nextSortOrderRow.next_sort_order,
       now,
       now,
@@ -115,7 +163,7 @@ export function createExpenseType(rawText: string): CreateExpenseTypeResult {
     const createdRow = db
       .prepare(
         `
-          SELECT id, expense_type_text, sort_order, created_at, updated_at
+          SELECT id, expense_type_text, pl_category, sort_order, created_at, updated_at
           FROM expense_types
           WHERE id = ?
         `,
@@ -148,6 +196,121 @@ export function createExpenseType(rawText: string): CreateExpenseTypeResult {
 
     throw error;
   }
+}
+
+export function updateExpenseTypeById(input: {
+  id: number;
+  expenseTypeText?: string;
+  plCategory: string | null | undefined;
+}): UpdateExpenseTypeResult {
+  const db = getDb();
+  const existing = db
+    .prepare(
+      `
+        SELECT id, expense_type_text, pl_category, sort_order, created_at, updated_at
+        FROM expense_types
+        WHERE id = ?
+      `,
+    )
+    .get(input.id) as ExpenseTypeRow | undefined;
+
+  if (!existing) {
+    return {
+      ok: false,
+      reason: "not_found",
+      message: "Expense type not found.",
+    };
+  }
+
+  if (typeof input.plCategory !== "string") {
+    return {
+      ok: false,
+      reason: "pl_category_required",
+      field: "plCategory",
+      message: "plCategory is required.",
+    };
+  }
+
+  if (!isExpensePlCategory(input.plCategory)) {
+    return {
+      ok: false,
+      reason: "invalid_pl_category",
+      field: "plCategory",
+      message: "plCategory must be a valid enum value.",
+    };
+  }
+
+  const nextText = input.expenseTypeText ?? existing.expense_type_text;
+  const trimmedText = nextText.trim();
+  if (trimmedText.length < 1) {
+    return {
+      ok: false,
+      reason: "validation",
+      field: "expenseTypeText",
+      message: "Expense type text is required.",
+    };
+  }
+
+  if (trimmedText.length > MAX_EXPENSE_TYPE_TEXT_LENGTH) {
+    return {
+      ok: false,
+      reason: "validation",
+      field: "expenseTypeText",
+      message: `Expense type text must be at most ${MAX_EXPENSE_TYPE_TEXT_LENGTH} characters.`,
+    };
+  }
+
+  const normalizedText = normalizeExpenseTypeText(trimmedText);
+  const now = new Date().toISOString();
+
+  try {
+    db.prepare(
+      `
+        UPDATE expense_types
+        SET
+          expense_type_text = ?,
+          normalized_text = ?,
+          pl_category = ?,
+          updated_at = ?
+        WHERE id = ?
+      `,
+    ).run(trimmedText, normalizedText, input.plCategory, now, input.id);
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE"
+    ) {
+      return {
+        ok: false,
+        reason: "duplicate",
+        field: "expenseTypeText",
+        message: "Expense type must be unique (case-insensitive, trimmed).",
+      };
+    }
+
+    throw error;
+  }
+
+  const updatedRow = db
+    .prepare(
+      `
+        SELECT id, expense_type_text, pl_category, sort_order, created_at, updated_at
+        FROM expense_types
+        WHERE id = ?
+      `,
+    )
+    .get(input.id) as ExpenseTypeRow | undefined;
+
+  if (!updatedRow) {
+    return {
+      ok: false,
+      reason: "not_found",
+      message: "Expense type not found.",
+    };
+  }
+
+  return { ok: true, value: mapExpenseType(updatedRow) };
 }
 
 export function deleteExpenseTypeById(id: number): DeleteExpenseTypeResult {
@@ -270,10 +433,24 @@ export function reorderExpenseTypes(
 }
 
 export function expenseTypeExistsById(id: number): boolean {
+  const expenseType = getExpenseTypeById(id);
+  return expenseType !== null;
+}
+
+export function getExpenseTypeById(id: number): ExpenseType | null {
   const db = getDb();
   const row = db
-    .prepare("SELECT id FROM expense_types WHERE id = ?")
-    .get(id) as { id: number } | undefined;
+    .prepare(
+      `
+        SELECT id, expense_type_text, pl_category, sort_order, created_at, updated_at
+        FROM expense_types
+        WHERE id = ?
+      `,
+    )
+    .get(id) as ExpenseTypeRow | undefined;
+  if (!row) {
+    return null;
+  }
 
-  return Boolean(row);
+  return mapExpenseType(row);
 }

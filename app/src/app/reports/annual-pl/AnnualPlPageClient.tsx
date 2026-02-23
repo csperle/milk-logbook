@@ -22,6 +22,13 @@ type ExpenseDetailRow = {
   prior: number;
 };
 
+type ExpenseDetailByCategory = {
+  directCosts: ExpenseDetailRow[];
+  operatingExpenses: ExpenseDetailRow[];
+  financialOther: ExpenseDetailRow[];
+  taxes: ExpenseDetailRow[];
+};
+
 type IncomeDetailRow = {
   counterpartyName: string;
   current: number;
@@ -30,13 +37,19 @@ type IncomeDetailRow = {
 
 type Totals = {
   revenue: number;
-  expenses: number;
+  directCosts: number;
+  operatingExpenses: number;
+  financialOther: number;
+  taxes: number;
+  categorizedExpenses: number;
+  uncategorizedExpenses: number;
 };
 
 type StatementRow = {
   key: string;
   label: string;
   kind: "value" | "subtotal";
+  mathRole: "add" | "subtract" | "subtotal";
   current: number;
   prior: number;
   hasEntries: boolean;
@@ -147,17 +160,101 @@ function normalizeCounterpartyName(value: string): string {
   return trimmed;
 }
 
+function buildExpenseDetailsByCategory(
+  rows: AnnualPlEntry[],
+  selectedYear: number,
+  priorYear: number,
+): ExpenseDetailByCategory {
+  const directCosts = new Map<string, ExpenseDetailRow>();
+  const operatingExpenses = new Map<string, ExpenseDetailRow>();
+  const financialOther = new Map<string, ExpenseDetailRow>();
+  const taxes = new Map<string, ExpenseDetailRow>();
+
+  for (const entry of rows) {
+    if (entry.entryType !== "expense") {
+      continue;
+    }
+    if (entry.documentYear !== selectedYear && entry.documentYear !== priorYear) {
+      continue;
+    }
+
+    let targetMap: Map<string, ExpenseDetailRow> | null = null;
+    if (entry.expensePlCategory === "direct_cost") {
+      targetMap = directCosts;
+    } else if (entry.expensePlCategory === "operating_expense") {
+      targetMap = operatingExpenses;
+    } else if (entry.expensePlCategory === "financial_other") {
+      targetMap = financialOther;
+    } else if (entry.expensePlCategory === "tax") {
+      targetMap = taxes;
+    }
+
+    if (!targetMap) {
+      continue;
+    }
+
+    const key = entry.typeOfExpenseId === null ? "null" : String(entry.typeOfExpenseId);
+    const existing = targetMap.get(key);
+    if (existing) {
+      if (entry.documentYear === selectedYear) {
+        existing.current += entry.amountGross;
+      } else {
+        existing.prior += entry.amountGross;
+      }
+      continue;
+    }
+
+    const current = entry.documentYear === selectedYear ? entry.amountGross : 0;
+    const prior = entry.documentYear === priorYear ? entry.amountGross : 0;
+    targetMap.set(key, {
+      typeOfExpenseId: entry.typeOfExpenseId,
+      expenseTypeText: entry.expenseTypeText ?? "Unassigned",
+      current,
+      prior,
+    });
+  }
+
+  return {
+    directCosts: Array.from(directCosts.values()).sort(compareExpenseDetailRows),
+    operatingExpenses: Array.from(operatingExpenses.values()).sort(compareExpenseDetailRows),
+    financialOther: Array.from(financialOther.values()).sort(compareExpenseDetailRows),
+    taxes: Array.from(taxes.values()).sort(compareExpenseDetailRows),
+  };
+}
+
 function buildTotals(rows: AnnualPlEntry[]): Totals {
   return rows.reduce(
     (acc, row) => {
       if (row.entryType === "income") {
         acc.revenue += row.amountGross;
       } else {
-        acc.expenses += row.amountGross;
+        if (row.expensePlCategory === "direct_cost") {
+          acc.directCosts += row.amountGross;
+          acc.categorizedExpenses += row.amountGross;
+        } else if (row.expensePlCategory === "operating_expense") {
+          acc.operatingExpenses += row.amountGross;
+          acc.categorizedExpenses += row.amountGross;
+        } else if (row.expensePlCategory === "financial_other") {
+          acc.financialOther += row.amountGross;
+          acc.categorizedExpenses += row.amountGross;
+        } else if (row.expensePlCategory === "tax") {
+          acc.taxes += row.amountGross;
+          acc.categorizedExpenses += row.amountGross;
+        } else {
+          acc.uncategorizedExpenses += row.amountGross;
+        }
       }
       return acc;
     },
-    { revenue: 0, expenses: 0 } satisfies Totals,
+    {
+      revenue: 0,
+      directCosts: 0,
+      operatingExpenses: 0,
+      financialOther: 0,
+      taxes: 0,
+      categorizedExpenses: 0,
+      uncategorizedExpenses: 0,
+    } satisfies Totals,
   );
 }
 
@@ -227,12 +324,12 @@ function computeFinalShareCell(mode: ReportMode, current: number, currentRevenue
 
 function getDetailColSpan(mode: ReportMode): number {
   if (mode === "actual") {
-    return 3;
+    return 4;
   }
   if (mode === "compare") {
-    return 6;
+    return 7;
   }
-  return 4;
+  return 5;
 }
 
 export function AnnualPlPageClient({
@@ -287,8 +384,13 @@ export function AnnualPlPageClient({
   const currentTotals = useMemo(() => buildTotals(selectedYearEntries), [selectedYearEntries]);
   const priorTotals = useMemo(() => buildTotals(priorYearEntries), [priorYearEntries]);
 
-  const currentResult = currentTotals.revenue - currentTotals.expenses;
-  const priorResult = priorTotals.revenue - priorTotals.expenses;
+  const currentGrossProfit = currentTotals.revenue - currentTotals.directCosts;
+  const priorGrossProfit = priorTotals.revenue - priorTotals.directCosts;
+  const currentOperatingResult = currentGrossProfit - currentTotals.operatingExpenses;
+  const priorOperatingResult = priorGrossProfit - priorTotals.operatingExpenses;
+  const currentResult =
+    currentOperatingResult - currentTotals.financialOther - currentTotals.taxes;
+  const priorResult = priorOperatingResult - priorTotals.financialOther - priorTotals.taxes;
 
   const incomeDetails = useMemo(() => {
     const byCounterparty = new Map<string, IncomeDetailRow>();
@@ -323,61 +425,34 @@ export function AnnualPlPageClient({
     return Array.from(byCounterparty.values()).sort(compareIncomeDetailRows);
   }, [entries, priorYear, selectedYear]);
 
-  const expenseDetails = useMemo(() => {
-    const byExpenseType = new Map<string, ExpenseDetailRow>();
-
-    for (const entry of entries) {
-      if (entry.entryType !== "expense") {
-        continue;
-      }
-      if (entry.documentYear !== selectedYear && entry.documentYear !== priorYear) {
-        continue;
-      }
-
-      const key = entry.typeOfExpenseId === null ? "null" : String(entry.typeOfExpenseId);
-      const existing = byExpenseType.get(key);
-      if (existing) {
-        if (entry.documentYear === selectedYear) {
-          existing.current += entry.amountGross;
-        } else {
-          existing.prior += entry.amountGross;
-        }
-        continue;
-      }
-
-      const current = entry.documentYear === selectedYear ? entry.amountGross : 0;
-      const prior = entry.documentYear === priorYear ? entry.amountGross : 0;
-      byExpenseType.set(key, {
-        typeOfExpenseId: entry.typeOfExpenseId,
-        expenseTypeText: entry.expenseTypeText ?? "Unassigned",
-        current,
-        prior,
-      });
-    }
-
-    return Array.from(byExpenseType.values()).sort(compareExpenseDetailRows);
-  }, [entries, priorYear, selectedYear]);
+  const expenseDetailsByCategory = useMemo(
+    () => buildExpenseDetailsByCategory(entries, selectedYear, priorYear),
+    [entries, priorYear, selectedYear],
+  );
 
   const hasAnyEntries = entries.length > 0;
-  const hasUnassignedExpenses = expenseDetails.some((row) => row.typeOfExpenseId === null && row.current !== 0);
+  const hasUnassignedExpenses = currentTotals.uncategorizedExpenses !== 0;
 
   const statementRows = useMemo(() => {
-    const directCostsCurrent = 0;
-    const directCostsPrior = 0;
-    const grossProfitCurrent = currentTotals.revenue - directCostsCurrent;
-    const grossProfitPrior = priorTotals.revenue - directCostsPrior;
-    const operatingResultCurrent = grossProfitCurrent - currentTotals.expenses;
-    const operatingResultPrior = grossProfitPrior - priorTotals.expenses;
-    const financialOtherCurrent = 0;
-    const financialOtherPrior = 0;
-    const taxesCurrent = 0;
-    const taxesPrior = 0;
+    const directCostsCurrent = currentTotals.directCosts;
+    const directCostsPrior = priorTotals.directCosts;
+    const grossProfitCurrent = currentGrossProfit;
+    const grossProfitPrior = priorGrossProfit;
+    const operatingExpensesCurrent = currentTotals.operatingExpenses;
+    const operatingExpensesPrior = priorTotals.operatingExpenses;
+    const operatingResultCurrent = currentOperatingResult;
+    const operatingResultPrior = priorOperatingResult;
+    const financialOtherCurrent = currentTotals.financialOther;
+    const financialOtherPrior = priorTotals.financialOther;
+    const taxesCurrent = currentTotals.taxes;
+    const taxesPrior = priorTotals.taxes;
 
     const rows: StatementRow[] = [
       {
         key: "revenue",
         label: "Revenue",
         kind: "value",
+        mathRole: "add",
         current: currentTotals.revenue,
         prior: priorTotals.revenue,
         hasEntries: true,
@@ -387,16 +462,18 @@ export function AnnualPlPageClient({
         key: "direct_costs",
         label: "Direct Costs",
         kind: "value",
+        mathRole: "subtract",
         current: directCostsCurrent,
         prior: directCostsPrior,
-        hasEntries: false,
-        entryType: "all",
+        hasEntries: directCostsCurrent !== 0 || directCostsPrior !== 0,
+        entryType: "expense",
         optional: true,
       },
       {
         key: "gross_profit",
         label: "Gross Profit",
         kind: "subtotal",
+        mathRole: "subtotal",
         current: grossProfitCurrent,
         prior: grossProfitPrior,
         hasEntries: true,
@@ -406,15 +483,17 @@ export function AnnualPlPageClient({
         key: "operating_expenses",
         label: "Operating Expenses",
         kind: "value",
-        current: currentTotals.expenses,
-        prior: priorTotals.expenses,
-        hasEntries: true,
+        mathRole: "subtract",
+        current: operatingExpensesCurrent,
+        prior: operatingExpensesPrior,
+        hasEntries: operatingExpensesCurrent !== 0 || operatingExpensesPrior !== 0,
         entryType: "expense",
       },
       {
         key: "operating_result",
         label: "Operating Result",
         kind: "subtotal",
+        mathRole: "subtotal",
         current: operatingResultCurrent,
         prior: operatingResultPrior,
         hasEntries: true,
@@ -424,26 +503,29 @@ export function AnnualPlPageClient({
         key: "financial_other",
         label: "Financial / Other",
         kind: "value",
+        mathRole: "subtract",
         current: financialOtherCurrent,
         prior: financialOtherPrior,
-        hasEntries: false,
-        entryType: "all",
+        hasEntries: financialOtherCurrent !== 0 || financialOtherPrior !== 0,
+        entryType: "expense",
         optional: true,
       },
       {
         key: "taxes",
         label: "Taxes",
         kind: "value",
+        mathRole: "subtract",
         current: taxesCurrent,
         prior: taxesPrior,
-        hasEntries: false,
-        entryType: "all",
+        hasEntries: taxesCurrent !== 0 || taxesPrior !== 0,
+        entryType: "expense",
         optional: true,
       },
       {
         key: "net_profit_loss",
         label: "Net Profit / Loss",
         kind: "subtotal",
+        mathRole: "subtotal",
         current: currentResult,
         prior: priorResult,
         hasEntries: true,
@@ -457,7 +539,24 @@ export function AnnualPlPageClient({
       }
       return row.current !== 0 || row.prior !== 0;
     });
-  }, [currentResult, currentTotals.expenses, currentTotals.revenue, priorResult, priorTotals.expenses, priorTotals.revenue]);
+  }, [
+    currentGrossProfit,
+    currentOperatingResult,
+    currentResult,
+    currentTotals.directCosts,
+    currentTotals.financialOther,
+    currentTotals.operatingExpenses,
+    currentTotals.revenue,
+    currentTotals.taxes,
+    priorGrossProfit,
+    priorOperatingResult,
+    priorResult,
+    priorTotals.directCosts,
+    priorTotals.financialOther,
+    priorTotals.operatingExpenses,
+    priorTotals.revenue,
+    priorTotals.taxes,
+  ]);
 
   const emptyStateText = !hasAnyEntries
     ? "No accounting entries yet. Upload invoices to start building your annual P&L."
@@ -465,7 +564,12 @@ export function AnnualPlPageClient({
 
   const kpiCards = [
     { key: "revenue", label: "Revenue", current: currentTotals.revenue, prior: priorTotals.revenue },
-    { key: "expenses", label: "Expenses", current: currentTotals.expenses, prior: priorTotals.expenses },
+    {
+      key: "expenses",
+      label: "Expenses",
+      current: currentTotals.categorizedExpenses,
+      prior: priorTotals.categorizedExpenses,
+    },
     { key: "net", label: "Net Result", current: currentResult, prior: priorResult },
   ];
 
@@ -618,7 +722,7 @@ export function AnnualPlPageClient({
 
         {hasUnassignedExpenses ? (
           <section className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Some expenses are unassigned and grouped under &quot;Unassigned&quot;.
+            Some expense entries are missing a P&amp;L category and are excluded from categorized summary lines.
           </section>
         ) : null}
 
@@ -640,6 +744,7 @@ export function AnnualPlPageClient({
               <table className="min-w-full divide-y divide-zinc-200 text-sm">
               <thead className="bg-zinc-100 text-left text-xs uppercase tracking-wide text-zinc-600">
                 <tr>
+                  <th className="w-28 px-3 py-2" aria-label="Math role"></th>
                   <th className="sticky left-0 bg-zinc-100 px-3 py-2">Line item</th>
                   <th className="px-3 py-2">{getCurrentLabel(selectedMode, selectedYear)}</th>
                   {selectedMode === "compare" || selectedMode === "common_size" ? (
@@ -655,7 +760,32 @@ export function AnnualPlPageClient({
               <tbody className="divide-y divide-zinc-200">
                 {statementRows.map((row) => (
                   <Fragment key={row.key}>
-                    <tr className={row.kind === "subtotal" ? "bg-zinc-50" : ""}>
+                    <tr
+                      className={
+                        row.mathRole === "subtotal"
+                          ? "bg-zinc-100 ring-1 ring-inset ring-zinc-300"
+                          : row.mathRole === "subtract"
+                            ? "bg-rose-50/40"
+                            : ""
+                      }
+                    >
+                      <td className="px-3 py-2 text-right align-middle">
+                        <span
+                          className={`inline-flex min-w-[2.75rem] items-center justify-center rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                            row.mathRole === "add"
+                              ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                              : row.mathRole === "subtract"
+                                ? "border-rose-300 bg-rose-50 text-rose-700"
+                                : "border-zinc-400 bg-zinc-200 text-zinc-800"
+                          }`}
+                        >
+                          {row.mathRole === "add"
+                            ? "+ Add"
+                            : row.mathRole === "subtract"
+                              ? "- Sub"
+                              : "= Total"}
+                        </span>
+                      </td>
                       <td className="sticky left-0 bg-inherit px-3 py-2 font-medium text-zinc-800">
                         {row.hasEntries ? (
                           <Link href={buildOverviewDrillthroughHref(selectedYear, row.entryType)} className="underline">
@@ -701,6 +831,7 @@ export function AnnualPlPageClient({
                     {selectedView === "details" && row.key === "revenue"
                       ? incomeDetails.map((detailRow) => (
                           <tr key={`income-${detailRow.counterpartyName}`}>
+                            <td className="px-3 py-2"></td>
                             <td className="sticky left-0 bg-white px-3 py-2 pl-8 text-zinc-700">
                               <Link href={buildOverviewDrillthroughHref(selectedYear, "income")} className="underline">
                                 {detailRow.counterpartyName}
@@ -739,9 +870,21 @@ export function AnnualPlPageClient({
                         ))
                       : null}
 
-                    {selectedView === "details" && row.key === "operating_expenses"
-                      ? expenseDetails.map((detailRow) => (
+                    {selectedView === "details" &&
+                    (row.key === "direct_costs" ||
+                      row.key === "operating_expenses" ||
+                      row.key === "financial_other" ||
+                      row.key === "taxes")
+                      ? (row.key === "direct_costs"
+                          ? expenseDetailsByCategory.directCosts
+                          : row.key === "operating_expenses"
+                            ? expenseDetailsByCategory.operatingExpenses
+                            : row.key === "financial_other"
+                              ? expenseDetailsByCategory.financialOther
+                              : expenseDetailsByCategory.taxes
+                        ).map((detailRow) => (
                           <tr key={`expense-${detailRow.typeOfExpenseId ?? "unassigned"}`}>
+                            <td className="px-3 py-2"></td>
                             <td className="sticky left-0 bg-white px-3 py-2 pl-8 text-zinc-700">
                               <Link href={buildOverviewDrillthroughHref(selectedYear, "expense")} className="underline">
                                 {detailRow.expenseTypeText}
@@ -782,7 +925,12 @@ export function AnnualPlPageClient({
                   </Fragment>
                 ))}
 
-                {selectedView === "details" && incomeDetails.length < 1 && expenseDetails.length < 1 ? (
+                {selectedView === "details" &&
+                incomeDetails.length < 1 &&
+                expenseDetailsByCategory.directCosts.length < 1 &&
+                expenseDetailsByCategory.operatingExpenses.length < 1 &&
+                expenseDetailsByCategory.financialOther.length < 1 &&
+                expenseDetailsByCategory.taxes.length < 1 ? (
                   <tr>
                     <td className="sticky left-0 bg-white px-3 py-2 text-zinc-600" colSpan={getDetailColSpan(selectedMode)}>
                       No detail rows available for the selected year.

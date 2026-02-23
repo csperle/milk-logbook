@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { getExpenseTypeById, type ExpensePlCategory } from "@/lib/expense-types-repo";
 import type { UploadEntryType } from "@/lib/invoice-uploads-repo";
 import type { UploadReviewDraft } from "@/lib/upload-review-repo";
 
@@ -37,6 +38,7 @@ export type AnnualPlEntry = {
   counterpartyName: string;
   typeOfExpenseId: number | null;
   expenseTypeText: string | null;
+  expensePlCategory: ExpensePlCategory | null;
 };
 
 type AnnualPlEntryRow = {
@@ -46,6 +48,7 @@ type AnnualPlEntryRow = {
   counterparty_name: string;
   type_of_expense_id: number | null;
   expense_type_text: string | null;
+  expense_pl_category: ExpensePlCategory | null;
 };
 
 export type CreatedPlaceholderEntry = {
@@ -214,7 +217,8 @@ export function listAnnualPlEntriesByCompanyId(companyId: number): AnnualPlEntry
           accounting_entries.amount_gross,
           accounting_entries.counterparty_name,
           accounting_entries.type_of_expense_id,
-          expense_types.expense_type_text
+          expense_types.expense_type_text,
+          accounting_entries.expense_pl_category
         FROM accounting_entries
         LEFT JOIN expense_types
           ON expense_types.id = accounting_entries.type_of_expense_id
@@ -230,12 +234,14 @@ export function listAnnualPlEntriesByCompanyId(companyId: number): AnnualPlEntry
     counterpartyName: row.counterparty_name,
     typeOfExpenseId: row.type_of_expense_id,
     expenseTypeText: row.expense_type_text,
+    expensePlCategory: row.expense_pl_category,
   }));
 }
 
 export type SaveEntryFromUploadResult =
   | { ok: true; value: AccountingEntrySummary }
-  | { ok: false; reason: "already_saved" };
+  | { ok: false; reason: "already_saved" }
+  | { ok: false; reason: "expense_type_not_found" };
 
 export function saveAccountingEntryFromUploadReview(input: {
   companyId: number;
@@ -250,6 +256,19 @@ export function saveAccountingEntryFromUploadReview(input: {
   try {
     const createdSummary = db.transaction(() => {
       const documentYear = Number.parseInt(input.draft.documentDate.slice(0, 4), 10);
+      let expensePlCategory: ExpensePlCategory | null = null;
+
+      if (input.entryType === "expense") {
+        if (input.draft.typeOfExpenseId === null) {
+          throw new Error("Expense entries require type_of_expense_id.");
+        }
+        const expenseType = getExpenseTypeById(input.draft.typeOfExpenseId);
+        if (!expenseType) {
+          return null;
+        }
+        expensePlCategory = expenseType.plCategory;
+      }
+
       const nextNumberRow = db
         .prepare(
           `
@@ -273,6 +292,7 @@ export function saveAccountingEntryFromUploadReview(input: {
               document_year,
               payment_received_date,
               type_of_expense_id,
+              expense_pl_category,
               counterparty_name,
               booking_text,
               amount_gross,
@@ -282,7 +302,7 @@ export function saveAccountingEntryFromUploadReview(input: {
               extraction_status,
               created_at,
               updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         )
         .run(
@@ -293,6 +313,7 @@ export function saveAccountingEntryFromUploadReview(input: {
           documentYear,
           input.draft.paymentReceivedDate,
           input.draft.typeOfExpenseId,
+          expensePlCategory,
           input.draft.counterpartyName,
           input.draft.bookingText,
           input.draft.amountGross,
@@ -343,6 +364,10 @@ export function saveAccountingEntryFromUploadReview(input: {
         createdAt: row.created_at,
       } satisfies AccountingEntrySummary;
     })();
+
+    if (!createdSummary) {
+      return { ok: false, reason: "expense_type_not_found" };
+    }
 
     return { ok: true, value: createdSummary };
   } catch (error) {

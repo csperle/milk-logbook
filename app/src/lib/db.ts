@@ -7,6 +7,9 @@ const dbPath = path.join(dataDir, "app.db");
 
 let dbInstance: Database.Database | null = null;
 
+const EXPENSE_PL_CATEGORY_CHECK =
+  "('direct_cost','operating_expense','financial_other','tax')";
+
 function ensureExpenseTypeSortOrder(db: Database.Database): void {
   const columns = db
     .prepare("PRAGMA table_info(expense_types)")
@@ -50,6 +53,22 @@ function ensureExpenseTypeSortOrder(db: Database.Database): void {
     });
   });
   fillSortOrder(orderedExpenseTypes);
+}
+
+function ensureExpenseTypePlCategory(db: Database.Database): void {
+  const columns = db
+    .prepare("PRAGMA table_info(expense_types)")
+    .all() as Array<{ name: string }>;
+  const hasPlCategory = columns.some((column) => column.name === "pl_category");
+  if (hasPlCategory) {
+    return;
+  }
+
+  db.exec(`
+    ALTER TABLE expense_types
+    ADD COLUMN pl_category TEXT NOT NULL DEFAULT 'operating_expense'
+    CHECK (pl_category IN ${EXPENSE_PL_CATEGORY_CHECK});
+  `);
 }
 
 function ensureAccountingEntriesCompanyColumn(db: Database.Database): void {
@@ -129,6 +148,18 @@ function ensureAccountingEntriesColumns(db: Database.Database): void {
     db.exec("ALTER TABLE accounting_entries ADD COLUMN updated_at TEXT;");
   }
 
+  if (!columnNames.has("expense_pl_category")) {
+    db.exec(`
+      ALTER TABLE accounting_entries
+      ADD COLUMN expense_pl_category TEXT
+      CHECK (
+        (entry_type = 'income' AND expense_pl_category IS NULL)
+        OR
+        (entry_type = 'expense' AND expense_pl_category IN ${EXPENSE_PL_CATEGORY_CHECK})
+      );
+    `);
+  }
+
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS accounting_entries_sequence_unique
     ON accounting_entries (company_id, document_year, entry_type, document_number)
@@ -159,6 +190,7 @@ function initializeSchema(db: Database.Database): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       expense_type_text TEXT NOT NULL,
       normalized_text TEXT NOT NULL UNIQUE,
+      pl_category TEXT NOT NULL CHECK(pl_category IN ('direct_cost','operating_expense','financial_other','tax')),
       sort_order INTEGER NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -202,6 +234,11 @@ function initializeSchema(db: Database.Database): void {
       company_id INTEGER NOT NULL,
       document_number INTEGER NOT NULL,
       entry_type TEXT NOT NULL CHECK(entry_type IN ('income', 'expense')),
+      expense_pl_category TEXT CHECK(
+        (entry_type = 'income' AND expense_pl_category IS NULL)
+        OR
+        (entry_type = 'expense' AND expense_pl_category IN ('direct_cost','operating_expense','financial_other','tax'))
+      ),
       document_date TEXT NOT NULL,
       document_year INTEGER NOT NULL,
       payment_received_date TEXT,
@@ -228,6 +265,7 @@ function initializeSchema(db: Database.Database): void {
     );
   `);
 
+  ensureExpenseTypePlCategory(db);
   ensureExpenseTypeSortOrder(db);
   ensureAccountingEntriesCompanyColumn(db);
   ensureAccountingEntriesColumns(db);
