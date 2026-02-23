@@ -49,6 +49,9 @@ Validation rules:
 - required on create
 - required on update
 
+SQLite constraint requirement:
+- enforce enum at DB layer with `CHECK (pl_category IN ('direct_cost','operating_expense','financial_other','tax'))`
+
 ### 3.3 accounting_entries changes
 
 Add field:
@@ -58,6 +61,11 @@ Rules:
 - income entries: `expense_pl_category` must be `NULL`
 - expense entries: `expense_pl_category` must be set from selected expense type category at save time
 - value is a snapshot for historical stability (later expense-type edits do not mutate old entries)
+
+SQLite constraint requirement:
+- enforce valid persisted combinations at DB layer with a row-level `CHECK`:
+  - `entry_type = 'income'` => `expense_pl_category IS NULL`
+  - `entry_type = 'expense'` => `expense_pl_category IN ('direct_cost','operating_expense','financial_other','tax')`
 
 ## 4) API and UI behavior
 
@@ -81,13 +89,18 @@ Request body:
 - `plCategory` (required enum)
 
 Validation:
-- missing/invalid `plCategory` returns `400` with deterministic error code
+- missing `plCategory` returns `400 PL_CATEGORY_REQUIRED`
+- invalid `plCategory` enum returns `400 INVALID_PL_CATEGORY`
 
 #### PUT /api/expense-types/:id
 
 Introduce/update endpoint behavior for editing:
 - `expenseTypeText` (optional; same validation when provided)
-- `plCategory` (required for update request in this slice)
+- `plCategory` (required on every PUT request in this slice, even when only updating text)
+
+Validation:
+- missing `plCategory` returns `400 PL_CATEGORY_REQUIRED`
+- invalid `plCategory` enum returns `400 INVALID_PL_CATEGORY`
 
 Deterministic statuses:
 - `200` updated
@@ -111,7 +124,7 @@ On `POST /api/uploads/:id/save` for expense entries:
 - persist `accounting_entries.expense_pl_category` from resolved type
 
 If selected expense type is missing at save time:
-- return deterministic validation/not-found error (existing conventions)
+- return `400 EXPENSE_TYPE_NOT_FOUND` (existing save-flow convention)
 
 ## 5) Annual P&L computation rules
 
@@ -130,6 +143,12 @@ Display/sign policy remains unchanged:
 - amounts displayed as persisted (no sign inversion)
 - CHF formatting remains Swiss (`de-CH`, 2 decimals)
 
+### 5.1 Mode coverage for `/reports/annual-pl`
+
+- The categorized computation rules above apply to all statement modes that render summary lines (`actual`, `compare`, `common_size`).
+- `details` view grouping/sorting behavior from slice `010` remains unchanged in this slice.
+- No new category-grouped details table is required in this slice.
+
 ## 6) Data migration and rollout assumptions
 
 Assumption for this slice:
@@ -141,11 +160,15 @@ Migration requirements:
 
 No backfill logic is required under the reset-DB assumption.
 
+Validation prerequisite:
+- local/dev validation for this slice requires running the documented reset workflow before testing, so schema starts clean with categorized expense types.
+
 ## 7) Edge cases
 
-- Creating expense type without category: rejected (`400`).
-- Invalid category value: rejected (`400`).
-- Expense save where selected expense type was deleted concurrently: deterministic failure (not found/conflict based on existing API style).
+- Creating expense type without category: rejected (`400 PL_CATEGORY_REQUIRED`).
+- Invalid category value: rejected (`400 INVALID_PL_CATEGORY`).
+- PUT update without category: rejected (`400 PL_CATEGORY_REQUIRED`).
+- Expense save where selected expense type was deleted concurrently: rejected (`400 EXPENSE_TYPE_NOT_FOUND`).
 - Income entries must never receive `expense_pl_category`.
 
 ## 8) Acceptance criteria
@@ -153,11 +176,15 @@ No backfill logic is required under the reset-DB assumption.
 - [ ] `expense_types` schema includes required `pl_category` constrained to canonical enum values.
 - [ ] `accounting_entries` schema includes `expense_pl_category` snapshot field.
 - [ ] `POST /api/expense-types` rejects missing/invalid `plCategory`.
+- [ ] `POST /api/expense-types` uses deterministic error codes: `PL_CATEGORY_REQUIRED`, `INVALID_PL_CATEGORY`.
 - [ ] `GET /api/expense-types` returns `plCategory` for each item.
+- [ ] `PUT /api/expense-types/:id` requires `plCategory` on every request and rejects missing/invalid values deterministically.
 - [ ] `/admin/expense-types` create flow requires category assignment.
 - [ ] `/admin/expense-types` displays category for existing rows.
 - [ ] Expense save persists `expense_pl_category` from selected expense type.
+- [ ] Expense save maps missing/deleted selected expense type to `400 EXPENSE_TYPE_NOT_FOUND`.
 - [ ] Annual P&L summary rows compute from category-based sums (Direct Costs, Operating Expenses, Financial/Other, Taxes).
+- [ ] Category-based P&L summary computation is applied consistently in `actual`, `compare`, and `common_size` modes.
 - [ ] Gross Profit, Operating Result, and Net Profit/Loss reflect categorized sums correctly.
 - [ ] Existing company-context guard behavior remains unchanged.
 - [ ] `npm run lint` and `npm run build` pass after implementation.
