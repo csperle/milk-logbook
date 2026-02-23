@@ -54,8 +54,7 @@
   2. KPI strip
   3. Controls row
   4. P&L statement table
-  5. Footnotes/assumptions block
-  6. Empty or warning states (when applicable)
+  5. Empty or warning states (when applicable)
 
   ### 4.1 Header/context bar
 
@@ -64,7 +63,6 @@
   - Title: Annual Profit & Loss
   - Active company name
   - Fiscal year label
-  - Accounting basis label: Cash basis (V1) (static until accrual is supported)
   - Actions:
       - Back to overview (/)
       - Upload invoice (/upload)
@@ -97,7 +95,6 @@
       - Actual (single-year)
       - Compare (year vs prior year)
       - Common-size (% of revenue)
-  - Toggle: Highlight unfavorable changes (default on)
 
   ## 5) P&L table design
 
@@ -133,7 +130,15 @@
 
   ### 5.3 Details view rows
 
-  - Expands only expense-related sections into expense-type rows from expense_types.
+  - Expands revenue and expense sections into detail rows.
+  - Revenue detail rows:
+      - one row per income counterparty (`counterpartyName`) under `Revenue`
+      - rows are grouped by normalized counterparty name (trimmed, case-insensitive)
+      - income entries with the same normalized counterparty name are summed into one row
+      - line-item label is the counterparty name
+      - deterministic sorting: amount descending (selected year), tie-breaker counterparty name ascending
+  - Expense detail rows:
+      - one row per expense type under `Operating Expenses` from `expense_types`
   - Deterministic sorting inside details:
       - amount descending (selected year)
       - tie-breaker expenseTypeText ascending
@@ -144,15 +149,11 @@
   ### 5.4 Row styling semantics
 
   - Subtotal/result rows (Gross Profit, Operating Result, Net Profit / Loss) are emphasized.
-  - Unfavorable variance highlighting:
-      - expense increase: unfavorable
-      - revenue decrease: unfavorable
-      - net result decrease: unfavorable
   - Negative-amount source values are displayed as persisted (no sign inversion).
 
   ## 6) Data mapping rules (V1 with current schema)
 
-  Given current data (entry_type, amount_gross, type_of_expense_id):
+  Given current data (entry_type, amount_gross, type_of_expense_id, counterparty_name):
 
   - Revenue = sum(amount_gross) where entry_type = income
   - Operating Expenses = sum(amount_gross) where entry_type = expense
@@ -169,16 +170,12 @@
   - round only at display boundary
   - deterministic null/zero handling for percentage fields
 
-  ## 7) Business semantics and labels
+## 7) Business semantics and labels
 
-  - All amounts treated as CHF (no currency selector).
-  - Report classification: management view only for V1; not a statutory annual financial statement output.
-  - Explicit footer note:
-      - This in-app report uses current V1 category mapping from uploaded accounting entries.
-      - Optional one-off/extraordinary classification is not part of V1 data model and is therefore excluded.
-  - Comparison semantics:
-      - prior year is always selectedYear - 1
-  - Percent calculations:
+- All amounts treated as CHF (no currency selector).
+- Comparison semantics:
+    - prior year is always selectedYear - 1
+- Percent calculations:
       - Δ % = (current - prior) / abs(prior); show - if prior = 0
       - % of Revenue = line / revenue; show - if revenue = 0
 
@@ -216,6 +213,7 @@
   - [ ] KPI strip shows current-year values and compare deltas in compare mode.
   - [ ] Table supports three modes: actual, compare, common-size.
   - [ ] Summary view uses canonical row order and required subtotal rows.
+  - [ ] Details view expands revenue rows by income counterparty and groups duplicate counterparties deterministically.
   - [ ] Details view expands expense rows by expense type with deterministic sorting.
   - [ ] Statement rows that have source entries provide drill-through navigation to filtered overview entries.
   - [ ] Source-entry drill-through preserves year context and allows opening source PDFs through existing file actions.

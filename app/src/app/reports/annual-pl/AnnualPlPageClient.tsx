@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo } from "react";
+import { Fragment, useEffect, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { AnnualPlEntry } from "@/lib/accounting-entries-repo";
 
@@ -18,6 +18,12 @@ type ReportMode = "actual" | "compare" | "common_size";
 type ExpenseDetailRow = {
   typeOfExpenseId: number | null;
   expenseTypeText: string;
+  current: number;
+  prior: number;
+};
+
+type IncomeDetailRow = {
+  counterpartyName: string;
   current: number;
   prior: number;
 };
@@ -126,6 +132,21 @@ function compareExpenseDetailRows(a: ExpenseDetailRow, b: ExpenseDetailRow): num
   return a.typeOfExpenseId - b.typeOfExpenseId;
 }
 
+function compareIncomeDetailRows(a: IncomeDetailRow, b: IncomeDetailRow): number {
+  if (a.current !== b.current) {
+    return b.current - a.current;
+  }
+  return a.counterpartyName.localeCompare(b.counterpartyName);
+}
+
+function normalizeCounterpartyName(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length < 1) {
+    return "Unknown counterparty";
+  }
+  return trimmed;
+}
+
 function buildTotals(rows: AnnualPlEntry[]): Totals {
   return rows.reduce(
     (acc, row) => {
@@ -140,34 +161,11 @@ function buildTotals(rows: AnnualPlEntry[]): Totals {
   );
 }
 
-function isUnfavorable(row: StatementRow): boolean {
-  if (row.key === "revenue") {
-    return row.current < row.prior;
-  }
-  if (row.key === "operating_expenses") {
-    return row.current > row.prior;
-  }
-  if (row.key === "net_profit_loss") {
-    return row.current < row.prior;
-  }
-  return false;
-}
-
 function formatSignedDelta(amountCents: number): string {
   if (amountCents > 0) {
     return `+${formatAmountCents(amountCents)}`;
   }
   return formatAmountCents(amountCents);
-}
-
-function parseBooleanQuery(value: string | null, fallback: boolean): boolean {
-  if (value === "1") {
-    return true;
-  }
-  if (value === "0") {
-    return false;
-  }
-  return fallback;
 }
 
 function buildOverviewDrillthroughHref(year: number, entryType: "all" | "income" | "expense"): string {
@@ -227,6 +225,16 @@ function computeFinalShareCell(mode: ReportMode, current: number, currentRevenue
   return formatShare(current, currentRevenue);
 }
 
+function getDetailColSpan(mode: ReportMode): number {
+  if (mode === "actual") {
+    return 3;
+  }
+  if (mode === "compare") {
+    return 6;
+  }
+  return 4;
+}
+
 export function AnnualPlPageClient({
   activeCompanyId,
   activeCompanyName,
@@ -239,7 +247,6 @@ export function AnnualPlPageClient({
 
   const selectedView = parseView(searchParams.get("view"));
   const selectedMode = parseMode(searchParams.get("mode"));
-  const highlightUnfavorable = parseBooleanQuery(searchParams.get("highlight"), true);
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
@@ -260,9 +267,8 @@ export function AnnualPlPageClient({
     params.set("year", String(selectedYear));
     params.set("view", selectedView);
     params.set("mode", selectedMode);
-    params.set("highlight", highlightUnfavorable ? "1" : "0");
     return params.toString();
-  }, [searchParams, selectedYear, selectedView, selectedMode, highlightUnfavorable]);
+  }, [searchParams, selectedYear, selectedView, selectedMode]);
 
   useEffect(() => {
     if (searchParams.toString() !== canonicalQuery) {
@@ -283,6 +289,39 @@ export function AnnualPlPageClient({
 
   const currentResult = currentTotals.revenue - currentTotals.expenses;
   const priorResult = priorTotals.revenue - priorTotals.expenses;
+
+  const incomeDetails = useMemo(() => {
+    const byCounterparty = new Map<string, IncomeDetailRow>();
+
+    for (const entry of entries) {
+      if (entry.entryType !== "income") {
+        continue;
+      }
+      if (entry.documentYear !== selectedYear && entry.documentYear !== priorYear) {
+        continue;
+      }
+
+      const normalizedName = normalizeCounterpartyName(entry.counterpartyName);
+      const key = normalizedName.toLocaleLowerCase("en-US");
+      const existing = byCounterparty.get(key);
+      if (existing) {
+        if (entry.documentYear === selectedYear) {
+          existing.current += entry.amountGross;
+        } else {
+          existing.prior += entry.amountGross;
+        }
+        continue;
+      }
+
+      byCounterparty.set(key, {
+        counterpartyName: normalizedName,
+        current: entry.documentYear === selectedYear ? entry.amountGross : 0,
+        prior: entry.documentYear === priorYear ? entry.amountGross : 0,
+      });
+    }
+
+    return Array.from(byCounterparty.values()).sort(compareIncomeDetailRows);
+  }, [entries, priorYear, selectedYear]);
 
   const expenseDetails = useMemo(() => {
     const byExpenseType = new Map<string, ExpenseDetailRow>();
@@ -438,7 +477,7 @@ export function AnnualPlPageClient({
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Annual Profit &amp; Loss</p>
             <h1 className="mt-1 text-3xl font-semibold tracking-tight">{activeCompanyName}</h1>
             <p className="mt-1 text-sm text-zinc-600">
-              Company #{activeCompanyId} | Fiscal year {selectedYear} | Cash basis (V1)
+              Company #{activeCompanyId} | Fiscal year {selectedYear}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -477,7 +516,7 @@ export function AnnualPlPageClient({
           </div>
         </header>
 
-        <section className="grid gap-3 rounded border border-zinc-300 bg-white p-4 md:grid-cols-4">
+        <section className="grid gap-3 rounded border border-zinc-300 bg-white p-4 md:grid-cols-3">
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-zinc-700">Year</span>
             <select
@@ -530,19 +569,6 @@ export function AnnualPlPageClient({
             </select>
           </label>
 
-          <label className="flex items-center gap-2 pt-7 text-sm font-medium text-zinc-700">
-            <input
-              type="checkbox"
-              checked={highlightUnfavorable}
-              onChange={(event) => {
-                const params = new URLSearchParams(searchParams.toString());
-                params.set("highlight", event.target.checked ? "1" : "0");
-                router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-              }}
-              className="h-4 w-4 rounded border-zinc-300"
-            />
-            Highlight unfavorable changes
-          </label>
         </section>
 
         <section className="grid gap-3 md:grid-cols-4">
@@ -551,7 +577,19 @@ export function AnnualPlPageClient({
               <p className="text-xs uppercase tracking-wide text-zinc-500">
                 {card.label} ({selectedYear})
               </p>
-              <p className="mt-2 text-2xl font-semibold text-zinc-900">{formatAmountCents(card.current)}</p>
+              <p
+                className={`mt-2 text-2xl font-semibold ${
+                  card.key === "revenue"
+                    ? "text-emerald-700"
+                    : card.key === "expenses"
+                      ? "text-rose-700"
+                      : card.current >= 0
+                        ? "text-emerald-700"
+                        : "text-rose-700"
+                }`}
+              >
+                {formatAmountCents(card.current)}
+              </p>
               {selectedMode === "compare" ? (
                 <div className="mt-2 text-xs text-zinc-600">
                   <p>{priorYear}: {formatAmountCents(card.prior)}</p>
@@ -564,7 +602,9 @@ export function AnnualPlPageClient({
           ))}
           <article className="rounded border border-zinc-300 bg-white p-4">
             <p className="text-xs uppercase tracking-wide text-zinc-500">Net Margin ({selectedYear})</p>
-            <p className="mt-2 text-2xl font-semibold text-zinc-900">{formatShare(currentResult, currentTotals.revenue)}</p>
+            <p className={`mt-2 text-2xl font-semibold ${currentResult >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
+              {formatShare(currentResult, currentTotals.revenue)}
+            </p>
             {selectedMode === "compare" ? (
               <div className="mt-2 text-xs text-zinc-600">
                 <p>{priorYear}: {formatShare(priorResult, priorTotals.revenue)}</p>
@@ -614,28 +654,28 @@ export function AnnualPlPageClient({
               </thead>
               <tbody className="divide-y divide-zinc-200">
                 {statementRows.map((row) => (
-                  <tr key={row.key} className={row.kind === "subtotal" ? "bg-zinc-50" : ""}>
-                    <td className="sticky left-0 bg-inherit px-3 py-2 font-medium text-zinc-800">
-                      {row.hasEntries ? (
-                        <Link href={buildOverviewDrillthroughHref(selectedYear, row.entryType)} className="underline">
-                          {row.label}
-                        </Link>
-                      ) : (
-                        row.label
-                      )}
-                    </td>
-                    <td className={`px-3 py-2 text-zinc-900 ${row.kind === "subtotal" ? "font-semibold" : ""}`}>
-                      {computeModePrimaryCell(selectedMode, row.current, currentTotals.revenue)}
-                    </td>
-                    {selectedMode === "compare" || selectedMode === "common_size" ? (
-                      <td className={`px-3 py-2 text-zinc-900 ${row.kind === "subtotal" ? "font-semibold" : ""}`}>
-                        {computeModeSecondaryCell(selectedMode, row.prior, priorTotals.revenue)}
+                  <Fragment key={row.key}>
+                    <tr className={row.kind === "subtotal" ? "bg-zinc-50" : ""}>
+                      <td className="sticky left-0 bg-inherit px-3 py-2 font-medium text-zinc-800">
+                        {row.hasEntries ? (
+                          <Link href={buildOverviewDrillthroughHref(selectedYear, row.entryType)} className="underline">
+                            {row.label}
+                          </Link>
+                        ) : (
+                          row.label
+                        )}
                       </td>
-                    ) : null}
-                    {selectedMode === "compare" || selectedMode === "common_size" ? (
-                      <td className="px-3 py-2">
-                        <div className="flex flex-wrap items-center gap-2 text-zinc-700">
-                          <span>
+                      <td className={`px-3 py-2 text-zinc-900 ${row.kind === "subtotal" ? "font-semibold" : ""}`}>
+                        {computeModePrimaryCell(selectedMode, row.current, currentTotals.revenue)}
+                      </td>
+                      {selectedMode === "compare" || selectedMode === "common_size" ? (
+                        <td className={`px-3 py-2 text-zinc-900 ${row.kind === "subtotal" ? "font-semibold" : ""}`}>
+                          {computeModeSecondaryCell(selectedMode, row.prior, priorTotals.revenue)}
+                        </td>
+                      ) : null}
+                      {selectedMode === "compare" || selectedMode === "common_size" ? (
+                        <td className="px-3 py-2">
+                          <span className="text-zinc-700">
                             {computeExtraDeltaCell(
                               selectedMode,
                               row.current,
@@ -644,72 +684,110 @@ export function AnnualPlPageClient({
                               priorTotals.revenue,
                             )}
                           </span>
-                          {highlightUnfavorable && selectedMode === "compare" && isUnfavorable(row) ? (
-                            <span className="inline-flex rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                              Unfavorable
-                            </span>
-                          ) : null}
-                        </div>
-                      </td>
-                    ) : null}
-                    {selectedMode === "compare" ? (
-                      <td className="px-3 py-2 text-zinc-700">
-                        {computeExtraPercentCell(selectedMode, row.current, row.prior)}
-                      </td>
-                    ) : null}
-                    {selectedMode !== "common_size" ? (
-                      <td className="px-3 py-2 text-zinc-700">
-                        {computeFinalShareCell(selectedMode, row.current, currentTotals.revenue)}
-                      </td>
-                    ) : null}
-                  </tr>
+                        </td>
+                      ) : null}
+                      {selectedMode === "compare" ? (
+                        <td className="px-3 py-2 text-zinc-700">
+                          {computeExtraPercentCell(selectedMode, row.current, row.prior)}
+                        </td>
+                      ) : null}
+                      {selectedMode !== "common_size" ? (
+                        <td className="px-3 py-2 text-zinc-700">
+                          {computeFinalShareCell(selectedMode, row.current, currentTotals.revenue)}
+                        </td>
+                      ) : null}
+                    </tr>
+
+                    {selectedView === "details" && row.key === "revenue"
+                      ? incomeDetails.map((detailRow) => (
+                          <tr key={`income-${detailRow.counterpartyName}`}>
+                            <td className="sticky left-0 bg-white px-3 py-2 pl-8 text-zinc-700">
+                              <Link href={buildOverviewDrillthroughHref(selectedYear, "income")} className="underline">
+                                {detailRow.counterpartyName}
+                              </Link>
+                            </td>
+                            <td className="px-3 py-2 text-zinc-900">
+                              {computeModePrimaryCell(selectedMode, detailRow.current, currentTotals.revenue)}
+                            </td>
+                            {selectedMode === "compare" || selectedMode === "common_size" ? (
+                              <td className="px-3 py-2 text-zinc-900">
+                                {computeModeSecondaryCell(selectedMode, detailRow.prior, priorTotals.revenue)}
+                              </td>
+                            ) : null}
+                            {selectedMode === "compare" || selectedMode === "common_size" ? (
+                              <td className="px-3 py-2 text-zinc-700">
+                                {computeExtraDeltaCell(
+                                  selectedMode,
+                                  detailRow.current,
+                                  detailRow.prior,
+                                  currentTotals.revenue,
+                                  priorTotals.revenue,
+                                )}
+                              </td>
+                            ) : null}
+                            {selectedMode === "compare" ? (
+                              <td className="px-3 py-2 text-zinc-700">
+                                {computeExtraPercentCell(selectedMode, detailRow.current, detailRow.prior)}
+                              </td>
+                            ) : null}
+                            {selectedMode !== "common_size" ? (
+                              <td className="px-3 py-2 text-zinc-700">
+                                {computeFinalShareCell(selectedMode, detailRow.current, currentTotals.revenue)}
+                              </td>
+                            ) : null}
+                          </tr>
+                        ))
+                      : null}
+
+                    {selectedView === "details" && row.key === "operating_expenses"
+                      ? expenseDetails.map((detailRow) => (
+                          <tr key={`expense-${detailRow.typeOfExpenseId ?? "unassigned"}`}>
+                            <td className="sticky left-0 bg-white px-3 py-2 pl-8 text-zinc-700">
+                              <Link href={buildOverviewDrillthroughHref(selectedYear, "expense")} className="underline">
+                                {detailRow.expenseTypeText}
+                              </Link>
+                            </td>
+                            <td className="px-3 py-2 text-zinc-900">
+                              {computeModePrimaryCell(selectedMode, detailRow.current, currentTotals.revenue)}
+                            </td>
+                            {selectedMode === "compare" || selectedMode === "common_size" ? (
+                              <td className="px-3 py-2 text-zinc-900">
+                                {computeModeSecondaryCell(selectedMode, detailRow.prior, priorTotals.revenue)}
+                              </td>
+                            ) : null}
+                            {selectedMode === "compare" || selectedMode === "common_size" ? (
+                              <td className="px-3 py-2 text-zinc-700">
+                                {computeExtraDeltaCell(
+                                  selectedMode,
+                                  detailRow.current,
+                                  detailRow.prior,
+                                  currentTotals.revenue,
+                                  priorTotals.revenue,
+                                )}
+                              </td>
+                            ) : null}
+                            {selectedMode === "compare" ? (
+                              <td className="px-3 py-2 text-zinc-700">
+                                {computeExtraPercentCell(selectedMode, detailRow.current, detailRow.prior)}
+                              </td>
+                            ) : null}
+                            {selectedMode !== "common_size" ? (
+                              <td className="px-3 py-2 text-zinc-700">
+                                {computeFinalShareCell(selectedMode, detailRow.current, currentTotals.revenue)}
+                              </td>
+                            ) : null}
+                          </tr>
+                        ))
+                      : null}
+                  </Fragment>
                 ))}
 
-                {selectedView === "details" ? (
-                  expenseDetails.length > 0 ? (
-                    expenseDetails.map((row) => (
-                      <tr key={row.typeOfExpenseId ?? "unassigned"}>
-                        <td className="sticky left-0 bg-white px-3 py-2 pl-8 text-zinc-700">
-                          <Link href={buildOverviewDrillthroughHref(selectedYear, "expense")} className="underline">
-                            {row.expenseTypeText}
-                          </Link>
-                        </td>
-                        <td className="px-3 py-2 text-zinc-900">
-                          {computeModePrimaryCell(selectedMode, row.current, currentTotals.revenue)}
-                        </td>
-                        {selectedMode === "compare" || selectedMode === "common_size" ? (
-                          <td className="px-3 py-2 text-zinc-900">
-                            {computeModeSecondaryCell(selectedMode, row.prior, priorTotals.revenue)}
-                          </td>
-                        ) : null}
-                        {selectedMode === "compare" || selectedMode === "common_size" ? (
-                          <td className="px-3 py-2 text-zinc-700">
-                            {computeExtraDeltaCell(
-                              selectedMode,
-                              row.current,
-                              row.prior,
-                              currentTotals.revenue,
-                              priorTotals.revenue,
-                            )}
-                          </td>
-                        ) : null}
-                        {selectedMode === "compare" ? (
-                          <td className="px-3 py-2 text-zinc-700">{computeExtraPercentCell(selectedMode, row.current, row.prior)}</td>
-                        ) : null}
-                        {selectedMode !== "common_size" ? (
-                          <td className="px-3 py-2 text-zinc-700">
-                            {computeFinalShareCell(selectedMode, row.current, currentTotals.revenue)}
-                          </td>
-                        ) : null}
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td className="sticky left-0 bg-white px-3 py-2 text-zinc-600" colSpan={selectedMode === "actual" ? 3 : selectedMode === "compare" ? 6 : 4}>
-                        No expense detail rows for the selected year.
-                      </td>
-                    </tr>
-                  )
+                {selectedView === "details" && incomeDetails.length < 1 && expenseDetails.length < 1 ? (
+                  <tr>
+                    <td className="sticky left-0 bg-white px-3 py-2 text-zinc-600" colSpan={getDetailColSpan(selectedMode)}>
+                      No detail rows available for the selected year.
+                    </td>
+                  </tr>
                 ) : null}
               </tbody>
               </table>
@@ -717,11 +795,6 @@ export function AnnualPlPageClient({
           </>
         )}
 
-        <section className="rounded border border-zinc-300 bg-white px-4 py-4 text-xs text-zinc-600">
-          <p>This in-app report uses current V1 category mapping from uploaded accounting entries.</p>
-          <p>Optional one-off/extraordinary classification is not part of the V1 data model and is excluded.</p>
-          <p>Management view only for V1. This is not a statutory annual financial statement output.</p>
-        </section>
       </div>
     </main>
   );

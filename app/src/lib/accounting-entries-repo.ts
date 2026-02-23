@@ -34,6 +34,7 @@ export type AnnualPlEntry = {
   documentYear: number;
   entryType: UploadEntryType;
   amountGross: number;
+  counterpartyName: string;
   typeOfExpenseId: number | null;
   expenseTypeText: string | null;
 };
@@ -42,6 +43,7 @@ type AnnualPlEntryRow = {
   document_year: number;
   entry_type: UploadEntryType;
   amount_gross: number;
+  counterparty_name: string;
   type_of_expense_id: number | null;
   expense_type_text: string | null;
 };
@@ -210,6 +212,7 @@ export function listAnnualPlEntriesByCompanyId(companyId: number): AnnualPlEntry
           accounting_entries.document_year,
           accounting_entries.entry_type,
           accounting_entries.amount_gross,
+          accounting_entries.counterparty_name,
           accounting_entries.type_of_expense_id,
           expense_types.expense_type_text
         FROM accounting_entries
@@ -224,6 +227,7 @@ export function listAnnualPlEntriesByCompanyId(companyId: number): AnnualPlEntry
     documentYear: row.document_year,
     entryType: row.entry_type,
     amountGross: row.amount_gross,
+    counterpartyName: row.counterparty_name,
     typeOfExpenseId: row.type_of_expense_id,
     expenseTypeText: row.expense_type_text,
   }));
