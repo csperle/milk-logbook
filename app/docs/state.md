@@ -1,9 +1,9 @@
 # Project State
 
 - Last updated date: 2026-02-23
-- Current goal: implement vertical slice `010-improved-annual-pl-view`.
+- Current goal: implement AI extraction/review/save on top of the established review/save workflow.
 - Active feature spec(s):
-  - `010-improved-annual-pl-view`
+  - `010-improved-annual-pl-view` (implemented)
   - `009-annual-pl-view-in-app` (implemented, superseded by `010`)
   - `008-yearly-overview-default-home` (implemented, pending product sign-off)
 
@@ -111,10 +111,36 @@
   - workflow actions (`Upload invoice`, `Open queue`, `Switch company`)
   - source-file links for opening stored PDFs
 - Overview filter/sort state is persisted in URL query params (`year`, `type`, `sort`) and restored on reload.
+- Improved annual P&L view slice (`010-improved-annual-pl-view`) is implemented.
+- Annual P&L UI route `/reports/annual-pl` now supports URL-persisted and normalized report state:
+  - `year=YYYY`
+  - `view=summary|details`
+  - `mode=actual|compare|common_size`
+- Annual P&L defaults and normalization behavior are implemented:
+  - defaults to latest available year for the active company, fallback UTC current year if no entries
+  - invalid query values are normalized deterministically via URL correction
+- Annual P&L header/context bar includes:
+  - active company context and fiscal year
+  - workflow links (`Back to overview`, `Upload invoice`, `Open queue`, `Switch company`)
+  - disabled `Export (coming soon)` placeholder action
+- KPI strip supports current-year totals and compare-mode prior-year deltas for:
+  - Revenue
+  - Expenses
+  - Net Result
+  - Net Margin
+- P&L statement table supports all required modes:
+  - `actual`
+  - `compare`
+  - `common_size`
+- Summary view uses canonical row ordering and subtotal emphasis with optional zero-only sections hidden.
+- Details view is implemented with deterministic grouping/sorting:
+  - income rows grouped by normalized counterparty name
+  - expense rows grouped by expense type with unassigned bucket when applicable
+- Statement rows provide drill-through links to filtered overview entries while preserving year/type context.
+- Empty and warning states are implemented for no-data, selected-year-empty, and unassigned-expense scenarios.
 
 ## What remains
 - Implement next planned features:
-- `010-improved-annual-pl-view` (enhanced in-app annual P&L view; no export in this slice)
 - AI extraction/review/save on top of the established review/save workflow
 - Annual P&L export/generation workflow
 
