@@ -12,20 +12,54 @@ type Props = {
   entries: AnnualPlEntry[];
 };
 
-type ExpenseBreakdownRow = {
+type ViewMode = "summary" | "details";
+type ReportMode = "actual" | "compare" | "common_size";
+
+type ExpenseDetailRow = {
   typeOfExpenseId: number | null;
   expenseTypeText: string;
-  amountGross: number;
+  current: number;
+  prior: number;
 };
 
-function parseSelectedYear(value: string | null, availableYears: number[]): number {
+type Totals = {
+  revenue: number;
+  expenses: number;
+};
+
+type StatementRow = {
+  key: string;
+  label: string;
+  kind: "value" | "subtotal";
+  current: number;
+  prior: number;
+  hasEntries: boolean;
+  entryType: "all" | "income" | "expense";
+  optional?: boolean;
+};
+
+function parseSelectedYear(value: string | null, availableYears: number[], fallback: number): number {
   if (value !== null) {
     const parsed = Number.parseInt(value, 10);
     if (availableYears.includes(parsed)) {
       return parsed;
     }
   }
-  return availableYears[0];
+  return availableYears[0] ?? fallback;
+}
+
+function parseView(value: string | null): ViewMode {
+  if (value === "details") {
+    return "details";
+  }
+  return "summary";
+}
+
+function parseMode(value: string | null): ReportMode {
+  if (value === "actual" || value === "common_size") {
+    return value;
+  }
+  return "compare";
 }
 
 function formatAmountCents(amountCents: number): string {
@@ -37,21 +71,41 @@ function formatAmountCents(amountCents: number): string {
   }).format(amountCents / 100);
 }
 
-function formatShare(numerator: number, denominator: number): string {
-  if (denominator === 0) {
-    return "0.00%";
-  }
-
+function formatPercent(value: number): string {
   return new Intl.NumberFormat("de-CH", {
     style: "percent",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(numerator / denominator);
+  }).format(value);
 }
 
-function compareBreakdownRows(a: ExpenseBreakdownRow, b: ExpenseBreakdownRow): number {
-  if (a.amountGross !== b.amountGross) {
-    return b.amountGross - a.amountGross;
+function formatShare(numerator: number, denominator: number): string {
+  if (denominator === 0) {
+    return "-";
+  }
+  return formatPercent(numerator / denominator);
+}
+
+function formatDeltaPercent(current: number, prior: number): string {
+  if (prior === 0) {
+    return "-";
+  }
+  return formatPercent((current - prior) / Math.abs(prior));
+}
+
+function formatPercentagePointDelta(current: number, prior: number, currentRevenue: number, priorRevenue: number): string {
+  if (currentRevenue === 0 || priorRevenue === 0) {
+    return "-";
+  }
+  const currentShare = current / currentRevenue;
+  const priorShare = prior / priorRevenue;
+  const ppDelta = (currentShare - priorShare) * 100;
+  return `${ppDelta.toFixed(2)} pp`;
+}
+
+function compareExpenseDetailRows(a: ExpenseDetailRow, b: ExpenseDetailRow): number {
+  if (a.current !== b.current) {
+    return b.current - a.current;
   }
 
   const textCompare = a.expenseTypeText.localeCompare(b.expenseTypeText);
@@ -72,6 +126,107 @@ function compareBreakdownRows(a: ExpenseBreakdownRow, b: ExpenseBreakdownRow): n
   return a.typeOfExpenseId - b.typeOfExpenseId;
 }
 
+function buildTotals(rows: AnnualPlEntry[]): Totals {
+  return rows.reduce(
+    (acc, row) => {
+      if (row.entryType === "income") {
+        acc.revenue += row.amountGross;
+      } else {
+        acc.expenses += row.amountGross;
+      }
+      return acc;
+    },
+    { revenue: 0, expenses: 0 } satisfies Totals,
+  );
+}
+
+function isUnfavorable(row: StatementRow): boolean {
+  if (row.key === "revenue") {
+    return row.current < row.prior;
+  }
+  if (row.key === "operating_expenses") {
+    return row.current > row.prior;
+  }
+  if (row.key === "net_profit_loss") {
+    return row.current < row.prior;
+  }
+  return false;
+}
+
+function formatSignedDelta(amountCents: number): string {
+  if (amountCents > 0) {
+    return `+${formatAmountCents(amountCents)}`;
+  }
+  return formatAmountCents(amountCents);
+}
+
+function parseBooleanQuery(value: string | null, fallback: boolean): boolean {
+  if (value === "1") {
+    return true;
+  }
+  if (value === "0") {
+    return false;
+  }
+  return fallback;
+}
+
+function buildOverviewDrillthroughHref(year: number, entryType: "all" | "income" | "expense"): string {
+  const params = new URLSearchParams();
+  params.set("year", String(year));
+  params.set("type", entryType);
+  params.set("sort", "documentDateDesc");
+  return `/?${params.toString()}`;
+}
+
+function getCurrentLabel(mode: ReportMode, year: number): string {
+  if (mode === "common_size") {
+    return `% of Revenue (${year})`;
+  }
+  return `Amount (${year})`;
+}
+
+function getPriorLabel(mode: ReportMode, year: number): string {
+  if (mode === "common_size") {
+    return `% of Revenue (${year - 1})`;
+  }
+  return `Amount (${year - 1})`;
+}
+
+function computeModePrimaryCell(mode: ReportMode, amount: number, revenue: number): string {
+  if (mode === "common_size") {
+    return formatShare(amount, revenue);
+  }
+  return formatAmountCents(amount);
+}
+
+function computeModeSecondaryCell(mode: ReportMode, amount: number, revenue: number): string {
+  if (mode === "common_size") {
+    return formatShare(amount, revenue);
+  }
+  return formatAmountCents(amount);
+}
+
+function computeExtraDeltaCell(mode: ReportMode, current: number, prior: number, currentRevenue: number, priorRevenue: number): string {
+  if (mode === "common_size") {
+    return formatPercentagePointDelta(current, prior, currentRevenue, priorRevenue);
+  }
+  return formatSignedDelta(current - prior);
+}
+
+function computeExtraPercentCell(mode: ReportMode, current: number, prior: number): string {
+  if (mode === "common_size") {
+    return "";
+  }
+  return formatDeltaPercent(current, prior);
+}
+
+function computeFinalShareCell(mode: ReportMode, current: number, currentRevenue: number): string {
+  if (mode === "common_size") {
+    return "";
+  }
+  return formatShare(current, currentRevenue);
+}
+
 export function AnnualPlPageClient({
   activeCompanyId,
   activeCompanyName,
@@ -81,6 +236,10 @@ export function AnnualPlPageClient({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  const selectedView = parseView(searchParams.get("view"));
+  const selectedMode = parseMode(searchParams.get("mode"));
+  const highlightUnfavorable = parseBooleanQuery(searchParams.get("highlight"), true);
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
@@ -93,13 +252,17 @@ export function AnnualPlPageClient({
     return Array.from(years).sort((a, b) => b - a);
   }, [defaultYear, entries]);
 
-  const selectedYear = parseSelectedYear(searchParams.get("year"), availableYears);
+  const selectedYear = parseSelectedYear(searchParams.get("year"), availableYears, defaultYear);
+  const priorYear = selectedYear - 1;
 
   const canonicalQuery = useMemo(() => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("year", String(selectedYear));
+    params.set("view", selectedView);
+    params.set("mode", selectedMode);
+    params.set("highlight", highlightUnfavorable ? "1" : "0");
     return params.toString();
-  }, [searchParams, selectedYear]);
+  }, [searchParams, selectedYear, selectedView, selectedMode, highlightUnfavorable]);
 
   useEffect(() => {
     if (searchParams.toString() !== canonicalQuery) {
@@ -111,61 +274,171 @@ export function AnnualPlPageClient({
     return entries.filter((entry) => entry.documentYear === selectedYear);
   }, [entries, selectedYear]);
 
-  const totals = useMemo(() => {
-    return selectedYearEntries.reduce(
-      (acc, entry) => {
-        if (entry.entryType === "income") {
-          acc.income += entry.amountGross;
-        } else {
-          acc.expense += entry.amountGross;
-        }
-        return acc;
-      },
-      { income: 0, expense: 0 },
-    );
-  }, [selectedYearEntries]);
+  const priorYearEntries = useMemo(() => {
+    return entries.filter((entry) => entry.documentYear === priorYear);
+  }, [entries, priorYear]);
 
-  const result = totals.income - totals.expense;
+  const currentTotals = useMemo(() => buildTotals(selectedYearEntries), [selectedYearEntries]);
+  const priorTotals = useMemo(() => buildTotals(priorYearEntries), [priorYearEntries]);
 
-  const expenseBreakdown = useMemo(() => {
-    const byExpenseType = new Map<string, ExpenseBreakdownRow>();
-    for (const entry of selectedYearEntries) {
+  const currentResult = currentTotals.revenue - currentTotals.expenses;
+  const priorResult = priorTotals.revenue - priorTotals.expenses;
+
+  const expenseDetails = useMemo(() => {
+    const byExpenseType = new Map<string, ExpenseDetailRow>();
+
+    for (const entry of entries) {
       if (entry.entryType !== "expense") {
+        continue;
+      }
+      if (entry.documentYear !== selectedYear && entry.documentYear !== priorYear) {
         continue;
       }
 
       const key = entry.typeOfExpenseId === null ? "null" : String(entry.typeOfExpenseId);
       const existing = byExpenseType.get(key);
       if (existing) {
-        existing.amountGross += entry.amountGross;
+        if (entry.documentYear === selectedYear) {
+          existing.current += entry.amountGross;
+        } else {
+          existing.prior += entry.amountGross;
+        }
         continue;
       }
 
+      const current = entry.documentYear === selectedYear ? entry.amountGross : 0;
+      const prior = entry.documentYear === priorYear ? entry.amountGross : 0;
       byExpenseType.set(key, {
         typeOfExpenseId: entry.typeOfExpenseId,
         expenseTypeText: entry.expenseTypeText ?? "Unassigned",
-        amountGross: entry.amountGross,
+        current,
+        prior,
       });
     }
 
-    return Array.from(byExpenseType.values()).sort(compareBreakdownRows);
-  }, [selectedYearEntries]);
+    return Array.from(byExpenseType.values()).sort(compareExpenseDetailRows);
+  }, [entries, priorYear, selectedYear]);
 
-  const hasSelectedYearEntries = selectedYearEntries.length > 0;
+  const hasAnyEntries = entries.length > 0;
+  const hasUnassignedExpenses = expenseDetails.some((row) => row.typeOfExpenseId === null && row.current !== 0);
+
+  const statementRows = useMemo(() => {
+    const directCostsCurrent = 0;
+    const directCostsPrior = 0;
+    const grossProfitCurrent = currentTotals.revenue - directCostsCurrent;
+    const grossProfitPrior = priorTotals.revenue - directCostsPrior;
+    const operatingResultCurrent = grossProfitCurrent - currentTotals.expenses;
+    const operatingResultPrior = grossProfitPrior - priorTotals.expenses;
+    const financialOtherCurrent = 0;
+    const financialOtherPrior = 0;
+    const taxesCurrent = 0;
+    const taxesPrior = 0;
+
+    const rows: StatementRow[] = [
+      {
+        key: "revenue",
+        label: "Revenue",
+        kind: "value",
+        current: currentTotals.revenue,
+        prior: priorTotals.revenue,
+        hasEntries: true,
+        entryType: "income",
+      },
+      {
+        key: "direct_costs",
+        label: "Direct Costs",
+        kind: "value",
+        current: directCostsCurrent,
+        prior: directCostsPrior,
+        hasEntries: false,
+        entryType: "all",
+        optional: true,
+      },
+      {
+        key: "gross_profit",
+        label: "Gross Profit",
+        kind: "subtotal",
+        current: grossProfitCurrent,
+        prior: grossProfitPrior,
+        hasEntries: true,
+        entryType: "all",
+      },
+      {
+        key: "operating_expenses",
+        label: "Operating Expenses",
+        kind: "value",
+        current: currentTotals.expenses,
+        prior: priorTotals.expenses,
+        hasEntries: true,
+        entryType: "expense",
+      },
+      {
+        key: "operating_result",
+        label: "Operating Result",
+        kind: "subtotal",
+        current: operatingResultCurrent,
+        prior: operatingResultPrior,
+        hasEntries: true,
+        entryType: "all",
+      },
+      {
+        key: "financial_other",
+        label: "Financial / Other",
+        kind: "value",
+        current: financialOtherCurrent,
+        prior: financialOtherPrior,
+        hasEntries: false,
+        entryType: "all",
+        optional: true,
+      },
+      {
+        key: "taxes",
+        label: "Taxes",
+        kind: "value",
+        current: taxesCurrent,
+        prior: taxesPrior,
+        hasEntries: false,
+        entryType: "all",
+        optional: true,
+      },
+      {
+        key: "net_profit_loss",
+        label: "Net Profit / Loss",
+        kind: "subtotal",
+        current: currentResult,
+        prior: priorResult,
+        hasEntries: true,
+        entryType: "all",
+      },
+    ];
+
+    return rows.filter((row) => {
+      if (!row.optional) {
+        return true;
+      }
+      return row.current !== 0 || row.prior !== 0;
+    });
+  }, [currentResult, currentTotals.expenses, currentTotals.revenue, priorResult, priorTotals.expenses, priorTotals.revenue]);
+
+  const emptyStateText = !hasAnyEntries
+    ? "No accounting entries yet. Upload invoices to start building your annual P&L."
+    : "No entries for the selected year. Compare view still shows prior-year values when available.";
+
+  const kpiCards = [
+    { key: "revenue", label: "Revenue", current: currentTotals.revenue, prior: priorTotals.revenue },
+    { key: "expenses", label: "Expenses", current: currentTotals.expenses, prior: priorTotals.expenses },
+    { key: "net", label: "Net Result", current: currentResult, prior: priorResult },
+  ];
 
   return (
     <main className="min-h-screen bg-zinc-50 px-6 py-12 text-zinc-900">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
-              Annual P&L
-            </p>
-            <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-              {activeCompanyName}
-            </h1>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">Annual Profit &amp; Loss</p>
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight">{activeCompanyName}</h1>
             <p className="mt-1 text-sm text-zinc-600">
-              Company #{activeCompanyId}
+              Company #{activeCompanyId} | Fiscal year {selectedYear} | Cash basis (V1)
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -193,11 +466,19 @@ export function AnnualPlPageClient({
             >
               Switch company
             </Link>
+            <button
+              type="button"
+              disabled
+              className="inline-flex cursor-not-allowed items-center rounded-md border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-500"
+              aria-disabled="true"
+            >
+              Export (coming soon)
+            </button>
           </div>
         </header>
 
-        <section className="rounded border border-zinc-300 bg-white p-4">
-          <label className="flex max-w-xs flex-col gap-1 text-sm">
+        <section className="grid gap-3 rounded border border-zinc-300 bg-white p-4 md:grid-cols-4">
+          <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-zinc-700">Year</span>
             <select
               value={selectedYear}
@@ -215,70 +496,232 @@ export function AnnualPlPageClient({
               ))}
             </select>
           </label>
+
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-zinc-700">View</span>
+            <select
+              value={selectedView}
+              onChange={(event) => {
+                const params = new URLSearchParams(searchParams.toString());
+                params.set("view", event.target.value);
+                router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+              }}
+              className="rounded border border-zinc-300 px-3 py-2"
+            >
+              <option value="summary">Summary</option>
+              <option value="details">Details</option>
+            </select>
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-zinc-700">Mode</span>
+            <select
+              value={selectedMode}
+              onChange={(event) => {
+                const params = new URLSearchParams(searchParams.toString());
+                params.set("mode", event.target.value);
+                router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+              }}
+              className="rounded border border-zinc-300 px-3 py-2"
+            >
+              <option value="actual">Actual</option>
+              <option value="compare">Compare</option>
+              <option value="common_size">Common-size</option>
+            </select>
+          </label>
+
+          <label className="flex items-center gap-2 pt-7 text-sm font-medium text-zinc-700">
+            <input
+              type="checkbox"
+              checked={highlightUnfavorable}
+              onChange={(event) => {
+                const params = new URLSearchParams(searchParams.toString());
+                params.set("highlight", event.target.checked ? "1" : "0");
+                router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+              }}
+              className="h-4 w-4 rounded border-zinc-300"
+            />
+            Highlight unfavorable changes
+          </label>
         </section>
 
-        <section className="grid gap-3 md:grid-cols-3">
+        <section className="grid gap-3 md:grid-cols-4">
+          {kpiCards.map((card) => (
+            <article key={card.key} className="rounded border border-zinc-300 bg-white p-4">
+              <p className="text-xs uppercase tracking-wide text-zinc-500">
+                {card.label} ({selectedYear})
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-zinc-900">{formatAmountCents(card.current)}</p>
+              {selectedMode === "compare" ? (
+                <div className="mt-2 text-xs text-zinc-600">
+                  <p>{priorYear}: {formatAmountCents(card.prior)}</p>
+                  <p>
+                    Delta: {formatSignedDelta(card.current - card.prior)} ({formatDeltaPercent(card.current, card.prior)})
+                  </p>
+                </div>
+              ) : null}
+            </article>
+          ))}
           <article className="rounded border border-zinc-300 bg-white p-4">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">Total income ({selectedYear})</p>
-            <p className="mt-2 text-2xl font-semibold text-emerald-700">
-              {formatAmountCents(totals.income)}
-            </p>
-          </article>
-          <article className="rounded border border-zinc-300 bg-white p-4">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">Total expenses ({selectedYear})</p>
-            <p className="mt-2 text-2xl font-semibold text-rose-700">
-              {formatAmountCents(totals.expense)}
-            </p>
-          </article>
-          <article className="rounded border border-zinc-300 bg-white p-4">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">Annual result ({selectedYear})</p>
-            <p className={`mt-2 text-2xl font-semibold ${result >= 0 ? "text-emerald-700" : "text-rose-700"}`}>
-              {formatAmountCents(result)}
-            </p>
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Net Margin ({selectedYear})</p>
+            <p className="mt-2 text-2xl font-semibold text-zinc-900">{formatShare(currentResult, currentTotals.revenue)}</p>
+            {selectedMode === "compare" ? (
+              <div className="mt-2 text-xs text-zinc-600">
+                <p>{priorYear}: {formatShare(priorResult, priorTotals.revenue)}</p>
+                <p>
+                  Delta: {formatPercentagePointDelta(currentResult, priorResult, currentTotals.revenue, priorTotals.revenue)}
+                </p>
+              </div>
+            ) : null}
           </article>
         </section>
 
-        {!hasSelectedYearEntries ? (
-          <section className="rounded border border-zinc-300 bg-white px-4 py-5 text-sm text-zinc-600">
-            No entries for the selected year. Totals are zero until entries are saved for this year.
+        {hasUnassignedExpenses ? (
+          <section className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Some expenses are unassigned and grouped under &quot;Unassigned&quot;.
           </section>
-        ) : expenseBreakdown.length < 1 ? (
+        ) : null}
+
+        {!hasAnyEntries ? (
           <section className="rounded border border-zinc-300 bg-white px-4 py-5 text-sm text-zinc-600">
-            No expense entries for the selected year.
+            <p>{emptyStateText}</p>
+            <Link href="/upload" className="mt-3 inline-flex items-center text-sm font-medium text-zinc-900 underline">
+              Upload invoice
+            </Link>
           </section>
         ) : (
-          <section className="overflow-x-auto rounded border border-zinc-300 bg-white">
-            <table className="min-w-full divide-y divide-zinc-200 text-sm">
+          <>
+            {selectedYearEntries.length < 1 ? (
+              <section className="rounded border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-600">
+                No entries for {selectedYear}. Current-year values are zero; prior-year comparison remains visible.
+              </section>
+            ) : null}
+            <section className="overflow-x-auto rounded border border-zinc-300 bg-white">
+              <table className="min-w-full divide-y divide-zinc-200 text-sm">
               <thead className="bg-zinc-100 text-left text-xs uppercase tracking-wide text-zinc-600">
                 <tr>
-                  <th className="px-3 py-2">Expense type</th>
-                  <th className="px-3 py-2">Amount</th>
-                  <th className="px-3 py-2">Share of total expenses</th>
+                  <th className="sticky left-0 bg-zinc-100 px-3 py-2">Line item</th>
+                  <th className="px-3 py-2">{getCurrentLabel(selectedMode, selectedYear)}</th>
+                  {selectedMode === "compare" || selectedMode === "common_size" ? (
+                    <th className="px-3 py-2">{getPriorLabel(selectedMode, selectedYear)}</th>
+                  ) : null}
+                  {selectedMode === "compare" || selectedMode === "common_size" ? (
+                    <th className="px-3 py-2">{selectedMode === "common_size" ? "Delta (pp)" : "Delta (CHF)"}</th>
+                  ) : null}
+                  {selectedMode === "compare" ? <th className="px-3 py-2">Delta (%)</th> : null}
+                  {selectedMode !== "common_size" ? <th className="px-3 py-2">% of Revenue ({selectedYear})</th> : null}
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-200">
-                {expenseBreakdown.map((row) => (
-                  <tr key={row.typeOfExpenseId ?? "unassigned"}>
-                    <td className="px-3 py-2 font-medium text-zinc-800">{row.expenseTypeText}</td>
-                    <td className="px-3 py-2 font-medium text-zinc-900">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span>{formatAmountCents(row.amountGross)}</span>
-                        {row.amountGross < 0 ? (
-                          <span className="inline-flex rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                            Negative amount
+                {statementRows.map((row) => (
+                  <tr key={row.key} className={row.kind === "subtotal" ? "bg-zinc-50" : ""}>
+                    <td className="sticky left-0 bg-inherit px-3 py-2 font-medium text-zinc-800">
+                      {row.hasEntries ? (
+                        <Link href={buildOverviewDrillthroughHref(selectedYear, row.entryType)} className="underline">
+                          {row.label}
+                        </Link>
+                      ) : (
+                        row.label
+                      )}
+                    </td>
+                    <td className={`px-3 py-2 text-zinc-900 ${row.kind === "subtotal" ? "font-semibold" : ""}`}>
+                      {computeModePrimaryCell(selectedMode, row.current, currentTotals.revenue)}
+                    </td>
+                    {selectedMode === "compare" || selectedMode === "common_size" ? (
+                      <td className={`px-3 py-2 text-zinc-900 ${row.kind === "subtotal" ? "font-semibold" : ""}`}>
+                        {computeModeSecondaryCell(selectedMode, row.prior, priorTotals.revenue)}
+                      </td>
+                    ) : null}
+                    {selectedMode === "compare" || selectedMode === "common_size" ? (
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2 text-zinc-700">
+                          <span>
+                            {computeExtraDeltaCell(
+                              selectedMode,
+                              row.current,
+                              row.prior,
+                              currentTotals.revenue,
+                              priorTotals.revenue,
+                            )}
                           </span>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 text-zinc-700">
-                      {formatShare(row.amountGross, totals.expense)}
-                    </td>
+                          {highlightUnfavorable && selectedMode === "compare" && isUnfavorable(row) ? (
+                            <span className="inline-flex rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                              Unfavorable
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
+                    ) : null}
+                    {selectedMode === "compare" ? (
+                      <td className="px-3 py-2 text-zinc-700">
+                        {computeExtraPercentCell(selectedMode, row.current, row.prior)}
+                      </td>
+                    ) : null}
+                    {selectedMode !== "common_size" ? (
+                      <td className="px-3 py-2 text-zinc-700">
+                        {computeFinalShareCell(selectedMode, row.current, currentTotals.revenue)}
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
+
+                {selectedView === "details" ? (
+                  expenseDetails.length > 0 ? (
+                    expenseDetails.map((row) => (
+                      <tr key={row.typeOfExpenseId ?? "unassigned"}>
+                        <td className="sticky left-0 bg-white px-3 py-2 pl-8 text-zinc-700">
+                          <Link href={buildOverviewDrillthroughHref(selectedYear, "expense")} className="underline">
+                            {row.expenseTypeText}
+                          </Link>
+                        </td>
+                        <td className="px-3 py-2 text-zinc-900">
+                          {computeModePrimaryCell(selectedMode, row.current, currentTotals.revenue)}
+                        </td>
+                        {selectedMode === "compare" || selectedMode === "common_size" ? (
+                          <td className="px-3 py-2 text-zinc-900">
+                            {computeModeSecondaryCell(selectedMode, row.prior, priorTotals.revenue)}
+                          </td>
+                        ) : null}
+                        {selectedMode === "compare" || selectedMode === "common_size" ? (
+                          <td className="px-3 py-2 text-zinc-700">
+                            {computeExtraDeltaCell(
+                              selectedMode,
+                              row.current,
+                              row.prior,
+                              currentTotals.revenue,
+                              priorTotals.revenue,
+                            )}
+                          </td>
+                        ) : null}
+                        {selectedMode === "compare" ? (
+                          <td className="px-3 py-2 text-zinc-700">{computeExtraPercentCell(selectedMode, row.current, row.prior)}</td>
+                        ) : null}
+                        {selectedMode !== "common_size" ? (
+                          <td className="px-3 py-2 text-zinc-700">
+                            {computeFinalShareCell(selectedMode, row.current, currentTotals.revenue)}
+                          </td>
+                        ) : null}
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td className="sticky left-0 bg-white px-3 py-2 text-zinc-600" colSpan={selectedMode === "actual" ? 3 : selectedMode === "compare" ? 6 : 4}>
+                        No expense detail rows for the selected year.
+                      </td>
+                    </tr>
+                  )
+                ) : null}
               </tbody>
-            </table>
-          </section>
+              </table>
+            </section>
+          </>
         )}
+
+        <section className="rounded border border-zinc-300 bg-white px-4 py-4 text-xs text-zinc-600">
+          <p>This in-app report uses current V1 category mapping from uploaded accounting entries.</p>
+          <p>Optional one-off/extraordinary classification is not part of the V1 data model and is excluded.</p>
+          <p>Management view only for V1. This is not a statutory annual financial statement output.</p>
+        </section>
       </div>
     </main>
   );
