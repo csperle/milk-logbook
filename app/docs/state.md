@@ -1,8 +1,9 @@
 # Project State
 
 - Last updated date: 2026-02-23
-- Current goal: implement AI extraction/review/save on top of the established review/save workflow.
+- Current goal: implement vertical slice `011-expense-type-pl-categorization`.
 - Active feature spec(s):
+  - `011-expense-type-pl-categorization` (draft)
   - `010-improved-annual-pl-view` (implemented)
   - `009-annual-pl-view-in-app` (implemented, superseded by `010`)
   - `008-yearly-overview-default-home` (implemented, pending product sign-off)
@@ -141,6 +142,7 @@
 
 ## What remains
 - Implement next planned features:
+- `011-expense-type-pl-categorization` (expense-type P&L categorization for accurate annual P&L sums)
 - AI extraction/review/save on top of the established review/save workflow
 - Annual P&L export/generation workflow
 
