@@ -1,6 +1,6 @@
 # 011-expense-type-pl-categorization
 
-- Status: Draft
+- Status: Implemented
 
 ## 1) Goal
 
@@ -112,7 +112,7 @@ Deterministic statuses:
 
 Enhancements:
 - Add required category selector in create form.
-- Show category column in list.
+- Show category for each expense type in the list (column or inline row metadata).
 - Add edit action to update category (and optionally text).
 - Keep reorder and delete behavior unchanged.
 
@@ -146,8 +146,20 @@ Display/sign policy remains unchanged:
 ### 5.1 Mode coverage for `/reports/annual-pl`
 
 - The categorized computation rules above apply to all statement modes that render summary lines (`actual`, `compare`, `common_size`).
-- `details` view grouping/sorting behavior from slice `010` remains unchanged in this slice.
-- No new category-grouped details table is required in this slice.
+- In `details` view, expense detail rows are rendered under their matching summary line only:
+  - `Direct Costs` shows `direct_cost` expense groups.
+  - `Operating Expenses` shows `operating_expense` expense groups.
+  - `Financial / Other` shows `financial_other` expense groups.
+  - `Taxes` shows `tax` expense groups.
+- Income detail grouping remains unchanged (by normalized counterparty).
+
+### 5.2 Statement readability cues
+
+- The annual P&L statement table includes a first column with explicit math-role markers:
+  - `+ Add` for additive lines.
+  - `- Sub` for subtractive lines.
+  - `= Total` for subtotal/total lines.
+- The math-role column header is intentionally blank.
 
 ## 6) Data migration and rollout assumptions
 
@@ -186,6 +198,8 @@ Validation prerequisite:
 - [ ] Annual P&L summary rows compute from category-based sums (Direct Costs, Operating Expenses, Financial/Other, Taxes).
 - [ ] Category-based P&L summary computation is applied consistently in `actual`, `compare`, and `common_size` modes.
 - [ ] Gross Profit, Operating Result, and Net Profit/Loss reflect categorized sums correctly.
+- [ ] Annual P&L `details` view renders expense detail groups under the matching categorized line item.
+- [ ] Annual P&L table includes a dedicated first math-role column (`+ Add`, `- Sub`, `= Total`) with blank header.
 - [ ] Existing company-context guard behavior remains unchanged.
 - [ ] `npm run lint` and `npm run build` pass after implementation.
 

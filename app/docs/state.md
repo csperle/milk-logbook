@@ -1,9 +1,9 @@
 # Project State
 
 - Last updated date: 2026-02-23
-- Current goal: implement vertical slice `011-expense-type-pl-categorization`.
+- Current goal: implement AI extraction/review/save on top of the established review/save workflow.
 - Active feature spec(s):
-  - `011-expense-type-pl-categorization` (draft)
+  - `011-expense-type-pl-categorization` (implemented)
   - `010-improved-annual-pl-view` (implemented)
   - `009-annual-pl-view-in-app` (implemented, superseded by `010`)
   - `008-yearly-overview-default-home` (implemented, pending product sign-off)
@@ -139,10 +139,40 @@
   - expense rows grouped by expense type with unassigned bucket when applicable
 - Statement rows provide drill-through links to filtered overview entries while preserving year/type context.
 - Empty and warning states are implemented for no-data, selected-year-empty, and unassigned-expense scenarios.
+- Expense-type P&L categorization slice (`011-expense-type-pl-categorization`) is implemented.
+- `expense_types` now persists required `pl_category` with enum DB constraint:
+  - `direct_cost`
+  - `operating_expense`
+  - `financial_other`
+  - `tax`
+- `accounting_entries` now persists `expense_pl_category` snapshot with row-level DB validation:
+  - income entries require `expense_pl_category IS NULL`
+  - expense entries require a valid category enum
+- Expense-type API enhancements implemented:
+  - `GET /api/expense-types` includes `plCategory`
+  - `POST /api/expense-types` requires/validates `plCategory` with deterministic `400` codes:
+    - `PL_CATEGORY_REQUIRED`
+    - `INVALID_PL_CATEGORY`
+  - `PUT /api/expense-types/:id` implemented; requires `plCategory` on every request and returns deterministic `200/400/404/409`
+- Expense-type admin UI (`/admin/expense-types`) now supports:
+  - required category selection on create
+  - category visibility for existing expense types
+  - inline edit for text and category
+  - existing reorder/delete behavior retained
+- Upload save flow now snapshots category on final save:
+  - `POST /api/uploads/:id/save` resolves current expense type category and persists `accounting_entries.expense_pl_category`
+  - missing/deleted selected expense type at save-time returns deterministic `400 EXPENSE_TYPE_NOT_FOUND`
+- Annual P&L categorized computations are now used in all summary modes (`actual`, `compare`, `common_size`) for:
+  - Direct Costs
+  - Operating Expenses
+  - Financial / Other
+  - Taxes
+  - derived Gross Profit, Operating Result, Net Profit / Loss
+- Annual P&L details view now renders expense detail groups under their matching categorized summary line item.
+- Annual P&L table now includes a dedicated first math-role column (`+ Add`, `- Sub`, `= Total`) with blank header for readability.
 
 ## What remains
 - Implement next planned features:
-- `011-expense-type-pl-categorization` (expense-type P&L categorization for accurate annual P&L sums)
 - AI extraction/review/save on top of the established review/save workflow
 - Annual P&L export/generation workflow
 
