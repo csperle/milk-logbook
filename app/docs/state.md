@@ -1,9 +1,10 @@
 # Project State
 
-- Last updated date: 2026-02-22
-- Current goal: implement vertical slice `009-annual-pl-view-in-app`.
+- Last updated date: 2026-02-23
+- Current goal: implement vertical slice `010-improved-annual-pl-view`.
 - Active feature spec(s):
-  - `009-annual-pl-view-in-app`
+  - `010-improved-annual-pl-view`
+  - `009-annual-pl-view-in-app` (implemented, superseded by `010`)
   - `008-yearly-overview-default-home` (implemented, pending product sign-off)
 
 ## What is implemented
@@ -113,7 +114,7 @@
 
 ## What remains
 - Implement next planned features:
-- `009-annual-pl-view-in-app` (in-app annual P&L view; no export)
+- `010-improved-annual-pl-view` (enhanced in-app annual P&L view; no export in this slice)
 - AI extraction/review/save on top of the established review/save workflow
 - Annual P&L export/generation workflow
 
