@@ -1,6 +1,6 @@
 # 012-workflow-first-navigation
 
-- Status: Proposed
+- Status: Implemented
 
 ## 1) Goal
 
@@ -15,9 +15,9 @@ Users should immediately know where to go for regular tasks without seeing admin
 ### 2.1 Primary work navigation (always visible)
 
 Order:
-1. `Inbox` -> `/uploads?status=pending_review`
-2. `Upload` -> `/upload`
-3. `Overview` -> `/`
+1. `Yearly Overview` -> `/`
+2. `Inbox` -> `/uploads?status=pending_review`
+3. `Upload invoice` -> `/upload`
 4. `Annual P&L` -> `/reports/annual-pl`
 
 Rules:
@@ -27,9 +27,9 @@ Rules:
 
 ### 2.2 Company context (always visible, compact)
 
-- Header control: `Active company: <name>`
-- Action: opens company selection/management page (`/admin/companies`) or company picker panel (if later introduced).
-- Keep compact; never as a large CTA button.
+- Company context is shown inside `Administration` dropdown as `Active company: <name>`.
+- Action opens company selection/management page (`/admin/companies`).
+- No standalone company button in header.
 
 ### 2.3 Administration (secondary, collapsed)
 
@@ -47,10 +47,7 @@ Rules:
 ### 3.1 Inbox (`/uploads`)
 
 Prominent:
-- `Review oldest pending` (if pending exists)
-
-Secondary:
-- status filter controls
+- pending-review table with direct `Review` action per row
 
 Hidden here:
 - admin links/buttons
@@ -61,14 +58,13 @@ Prominent:
 - upload form submit
 
 After success:
-- Primary: `Review now`
-- Secondary: `Back to Inbox`
+- redirect directly to review screen for the uploaded PDF (`/uploads/[id]/review`)
 
 ### 3.3 Review (`/uploads/[id]/review`)
 
 Prominent:
 - `Save entry and next` (when pending)
-- `Save` / `Back to Inbox` as secondary
+- `Save entry`
 
 Hidden here:
 - admin links/buttons
@@ -77,7 +73,6 @@ Hidden here:
 
 Prominent:
 - core filters/sort/year
-- operational quick actions only: `Upload invoice`, `Open Inbox`
 
 Remove from prominent area:
 - `Switch company` button (replace by compact header company control)
@@ -96,10 +91,8 @@ De-emphasize:
 
 Left to right:
 1. App name/logo
-2. Primary work nav (`Inbox`, `Upload`, `Overview`, `Annual P&L`)
-3. Spacer
-4. `Active company` compact control
-5. `Administration` dropdown
+2. Primary work nav (`Yearly Overview`, `Inbox`, `Upload invoice`, `Annual P&L`)
+3. `Administration` dropdown (contains `Active company: <name>` and `Expense types`)
 
 ## 5) Copy and label rules
 
@@ -110,8 +103,8 @@ Left to right:
 ## 6) Route-to-nav active mapping
 
 - `/uploads` and `/uploads/[id]/review` -> active tab `Inbox`
-- `/upload` -> `Upload`
-- `/` -> `Overview`
+- `/upload` -> `Upload invoice`
+- `/` -> `Yearly Overview`
 - `/reports/annual-pl` -> `Annual P&L`
 - `/admin/*` -> no primary tab active; highlight `Administration` menu trigger
 
@@ -151,11 +144,11 @@ Left to right:
 
 ## 8) Acceptance criteria
 
-- Workflow pages no longer show prominent admin buttons.
-- Primary header always shows day-to-day nav items.
-- Admin pages are reachable via `Administration` menu only.
-- Company context is always visible but compact.
-- Users can complete upload -> review -> next review flow without encountering admin controls.
+- [x] Workflow pages no longer show prominent admin buttons.
+- [x] Primary header always shows day-to-day nav items.
+- [x] Admin pages are reachable via `Administration` menu only.
+- [x] Company context is always visible and compact within `Administration`.
+- [x] Users can complete upload -> review -> next review flow without encountering admin controls.
 
 ## 9) Minimal rollout plan
 

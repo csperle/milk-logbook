@@ -1,9 +1,9 @@
 # Project State
 
 - Last updated date: 2026-02-25
-- Current goal: implement workflow-first navigation/UI de-cluttering before AI extraction/review/save.
+- Current goal: implement AI extraction/review/save on top of the updated workflow-first navigation.
 - Active feature spec(s):
-  - `012-workflow-first-navigation` (proposed)
+  - `012-workflow-first-navigation` (implemented)
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -13,9 +13,15 @@
 - Active company is persisted in cookie key `activeCompanyId`.
 - Guard behavior is enforced for non-company-admin routes when no company exists or no valid active company is selected.
 - Company admin page shows clear warning guidance when navigation is blocked by missing company setup/context.
-- Main page header shows active company in a top-right bordered link to company admin.
+- App now has a shared workflow-first global header with primary day-to-day navigation:
+  - `Yearly Overview`
+  - `Inbox` (with pending count badge, including `0`)
+  - `Upload invoice`
+  - `Annual P&L`
+- Administration actions are de-emphasized in a single `Administration` dropdown:
+  - `Active company: <name>` (link to company admin)
+  - `Expense types`
 - Expense type admin UI is available at `/admin/expense-types`.
-- Root/home navigation links to `/admin/expense-types`.
 - API endpoints exist: `GET /api/expense-types`, `POST /api/expense-types`, `DELETE /api/expense-types/:id`.
 - SQLite persistence is implemented via `better-sqlite3` with local DB file `data/app.db`.
 - Expense type creation enforces trim/non-empty validation and case-insensitive uniqueness.
@@ -70,9 +76,7 @@
   - pending first
   - then `uploaded_at ASC`
   - tie-breaker `id ASC`
-- Queue actions are status-specific:
-  - pending items: `Review` -> `/uploads/{id}/review`
-  - saved items: `Open overview` -> `/`
+- Queue UI now focuses on pending-review workflow only (inbox table with row-level `Review` action), while API filter support remains available.
 - Review page includes `Save entry and next` for pending uploads only.
 - Save-and-next behavior:
   - saves current upload entry
@@ -82,10 +86,8 @@
 - Queue supports deterministic flash messaging via URL query:
   - `flash=saved_and_opened_next`
   - `flash=saved_and_queue_empty`
-- `/upload` now supports explicit capture-mode UX without forced review redirect after success:
-  - primary action remains upload next file
-  - secondary actions: review current upload now, open pending queue
-- Processing-mode queue UX now includes a clear primary CTA (`Review oldest pending`) when pending items exist.
+- `/upload` now redirects directly to `/uploads/{id}/review` immediately after successful upload.
+- Inbox filter box and `Review oldest pending` box were removed to reduce distraction and keep pending processing focused.
 - Upload review PDF preview slice (`007-upload-review-pdf-preview`) is implemented.
 - File preview API endpoint exists: `GET /api/uploads/:id/file`.
 - File endpoint behavior includes:
@@ -106,7 +108,6 @@
   - selected-year KPI totals (income, expenses, result)
   - filter controls (`year`, `type`)
   - deterministic sort control (`documentDate`, `amount`, `documentNumber`, asc/desc)
-  - workflow actions (`Upload invoice`, `Open queue`, `Switch company`)
   - source-file links for opening stored PDFs
 - Overview filter/sort state is persisted in URL query params (`year`, `type`, `sort`) and restored on reload.
 - Improved annual P&L view slice (`010-improved-annual-pl-view`) is implemented.
@@ -119,7 +120,7 @@
   - invalid query values are normalized deterministically via URL correction
 - Annual P&L header/context bar includes:
   - active company context and fiscal year
-  - workflow links (`Back to overview`, `Upload invoice`, `Open queue`, `Switch company`)
+  - streamlined local actions (`Back to overview`, disabled `Export (coming soon)`)
   - disabled `Export (coming soon)` placeholder action
 - KPI strip supports current-year totals and compare-mode prior-year deltas for:
   - Revenue
@@ -170,7 +171,6 @@
 
 ## What remains
 - Implement next planned features:
-- Workflow-first navigation/UI de-cluttering (`012-workflow-first-navigation`)
 - AI extraction/review/save on top of the established review/save workflow
 - Annual P&L export/generation workflow
 
