@@ -1,12 +1,9 @@
 # Project State
 
-- Last updated date: 2026-02-23
-- Current goal: implement AI extraction/review/save on top of the established review/save workflow.
+- Last updated date: 2026-02-25
+- Current goal: implement workflow-first navigation/UI de-cluttering before AI extraction/review/save.
 - Active feature spec(s):
-  - `011-expense-type-pl-categorization` (implemented)
-  - `010-improved-annual-pl-view` (implemented)
-  - `009-annual-pl-view-in-app` (implemented, superseded by `010`)
-  - `008-yearly-overview-default-home` (implemented, pending product sign-off)
+  - `012-workflow-first-navigation` (proposed)
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -173,6 +170,7 @@
 
 ## What remains
 - Implement next planned features:
+- Workflow-first navigation/UI de-cluttering (`012-workflow-first-navigation`)
 - AI extraction/review/save on top of the established review/save workflow
 - Annual P&L export/generation workflow
 
