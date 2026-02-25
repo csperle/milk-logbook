@@ -30,13 +30,6 @@ type ReviewResponse = {
   reviewStatus: "pending_review" | "saved";
 };
 
-type SaveEntryResponse = {
-  entry: {
-    id: number;
-    documentNumber: number;
-  };
-};
-
 type ApiErrorPayload = {
   error?: {
     code?: string;
@@ -49,6 +42,11 @@ type Props = {
   activeCompanyId: number;
   activeCompanyName: string;
   expenseTypes: ExpenseTypeOption[];
+};
+
+type Feedback = {
+  tone: "info" | "error";
+  message: string;
 };
 
 type DraftFormState = {
@@ -105,6 +103,13 @@ async function parseApiError(response: Response): Promise<{ code?: string; messa
   return { message: "Request failed." };
 }
 
+function toUserFacingErrorMessage(message: string): string {
+  if (message === "typeOfExpenseId is required for expense entries.") {
+    return "Select expense type.";
+  }
+  return message;
+}
+
 export function UploadReviewPageClient({
   uploadId,
   activeCompanyId,
@@ -117,7 +122,7 @@ export function UploadReviewPageClient({
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isSavingEntry, setIsSavingEntry] = useState(false);
   const [isSavingEntryAndNext, setIsSavingEntryAndNext] = useState(false);
-  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [reviewData, setReviewData] = useState<ReviewResponse | null>(null);
   const [formState, setFormState] = useState<DraftFormState | null>(null);
 
@@ -206,14 +211,14 @@ export function UploadReviewPageClient({
 
   async function handleSaveDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setFeedbackMessage(null);
+    setFeedback(null);
 
     if (!draftPayload) {
-      setFeedbackMessage("Draft form is not ready.");
+      setFeedback({ tone: "error", message: "Draft form is not ready." });
       return;
     }
     if (!draftPayload.ok) {
-      setFeedbackMessage(draftPayload.message);
+      setFeedback({ tone: "error", message: draftPayload.message });
       return;
     }
 
@@ -228,16 +233,17 @@ export function UploadReviewPageClient({
       });
 
       if (!response.ok) {
-        setFeedbackMessage((await parseApiError(response)).message);
+        const apiError = await parseApiError(response);
+        setFeedback({ tone: "error", message: toUserFacingErrorMessage(apiError.message) });
         return;
       }
 
       const payload = (await response.json()) as ReviewResponse;
       setReviewData(payload);
       setFormState(toFormState(payload));
-      setFeedbackMessage("Draft saved.");
+      setFeedback({ tone: "info", message: "Draft saved." });
     } catch {
-      setFeedbackMessage("Could not save draft.");
+      setFeedback({ tone: "error", message: "Could not save draft." });
     } finally {
       setIsSavingDraft(false);
     }
@@ -256,15 +262,15 @@ export function UploadReviewPageClient({
   }
 
   async function handleSaveEntry(options?: { andNext?: boolean }) {
-    setFeedbackMessage(null);
+    setFeedback(null);
     const andNext = options?.andNext ?? false;
 
     if (!draftPayload) {
-      setFeedbackMessage("Draft form is not ready.");
+      setFeedback({ tone: "error", message: "Draft form is not ready." });
       return;
     }
     if (!draftPayload.ok) {
-      setFeedbackMessage(draftPayload.message);
+      setFeedback({ tone: "error", message: draftPayload.message });
       return;
     }
 
@@ -283,7 +289,8 @@ export function UploadReviewPageClient({
       });
 
       if (!draftSaveResponse.ok) {
-        setFeedbackMessage((await parseApiError(draftSaveResponse)).message);
+        const apiError = await parseApiError(draftSaveResponse);
+        setFeedback({ tone: "error", message: toUserFacingErrorMessage(apiError.message) });
         return;
       }
 
@@ -296,36 +303,43 @@ export function UploadReviewPageClient({
         if (andNext && apiError.code === "ALREADY_SAVED") {
           const nextUploadId = await findNextPendingUploadId();
           if (nextUploadId) {
-            router.push(`/uploads/${nextUploadId}/review`);
+            router.push(`/uploads/${nextUploadId}/review`, { scroll: true });
             return;
           }
 
-          router.push("/uploads?status=pending_review&flash=saved_and_queue_empty");
+          router.push("/uploads?status=pending_review&flash=saved_and_queue_empty", {
+            scroll: true,
+          });
           return;
         }
 
-        setFeedbackMessage(apiError.message);
+        setFeedback({ tone: "error", message: toUserFacingErrorMessage(apiError.message) });
         return;
       }
 
-      const payload = (await response.json()) as SaveEntryResponse;
+      window.dispatchEvent(new Event("uploads:changed"));
       if (andNext) {
         const nextUploadId = await findNextPendingUploadId();
         if (nextUploadId) {
-          router.push(`/uploads/${nextUploadId}/review`);
+          router.push(`/uploads/${nextUploadId}/review`, { scroll: true });
           return;
         }
 
-        router.push("/uploads?status=pending_review&flash=saved_and_queue_empty");
+        router.push("/uploads?status=pending_review&flash=saved_and_queue_empty", {
+          scroll: true,
+        });
         return;
       }
 
-      setFeedbackMessage(
-        `Entry #${payload.entry.documentNumber} saved. Redirecting to yearly overview...`,
-      );
-      router.push("/");
+      const nextPendingUploadId = await findNextPendingUploadId();
+      if (nextPendingUploadId) {
+        router.push("/uploads?status=pending_review", { scroll: true });
+        return;
+      }
+
+      router.push("/", { scroll: true });
     } catch {
-      setFeedbackMessage("Could not save entry.");
+      setFeedback({ tone: "error", message: "Could not save entry." });
     } finally {
       if (andNext) {
         setIsSavingEntryAndNext(false);
@@ -370,34 +384,20 @@ export function UploadReviewPageClient({
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">Review Upload</h1>
             <p className="mt-1 text-sm text-zinc-600">
-              Processing mode • Active company: {activeCompanyName} (#{activeCompanyId})
+              Company: {activeCompanyName} (#{activeCompanyId})
             </p>
-          </div>
-          <div className="flex gap-2">
-            <Link
-              href="/upload"
-              className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
-            >
-              Open capture mode
-            </Link>
-            <Link
-              href="/uploads?status=pending_review"
-              className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
-            >
-              Back to queue
-            </Link>
-            <Link
-              href="/"
-              className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
-            >
-              Back to main page
-            </Link>
           </div>
         </header>
 
-        {feedbackMessage ? (
-          <p className="rounded border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-700">
-            {feedbackMessage}
+        {feedback ? (
+          <p
+            className={`rounded px-3 py-2 text-sm ${
+              feedback.tone === "error"
+                ? "border border-red-300 bg-red-50 text-red-700"
+                : "border border-zinc-300 bg-white text-zinc-700"
+            }`}
+          >
+            {feedback.message}
           </p>
         ) : null}
 

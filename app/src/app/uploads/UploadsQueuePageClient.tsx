@@ -1,10 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
-type UploadStatusFilter = "pending_review" | "saved" | "all";
 type UploadReviewStatus = "pending_review" | "saved";
 
 type QueueItem = {
@@ -36,20 +35,12 @@ type Props = {
   activeCompanyName: string;
 };
 
-function isUploadStatusFilter(value: string | null): value is UploadStatusFilter {
-  return value === "pending_review" || value === "saved" || value === "all";
-}
-
-function getStatusLabel(status: UploadReviewStatus): string {
-  return status === "pending_review" ? "Pending review" : "Saved";
-}
-
 function getFlashMessage(flash: string | null): string | null {
   if (flash === "saved_and_opened_next") {
     return "Entry saved. Continuing with the next pending upload.";
   }
   if (flash === "saved_and_queue_empty") {
-    return "Entry saved. Pending queue is now empty.";
+    return "Entry saved. Inbox is now empty.";
   }
   return null;
 }
@@ -68,21 +59,23 @@ async function parseApiError(response: Response): Promise<string> {
 }
 
 export function UploadsQueuePageClient({ activeCompanyId, activeCompanyName }: Props) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [items, setItems] = useState<QueueItem[]>([]);
 
-  const rawStatus = searchParams.get("status");
-  const status: UploadStatusFilter = isUploadStatusFilter(rawStatus) ? rawStatus : "pending_review";
   const flashMessage = getFlashMessage(searchParams.get("flash"));
 
   useEffect(() => {
-    if (rawStatus !== null && !isUploadStatusFilter(rawStatus)) {
-      router.replace("/uploads?status=pending_review");
-    }
-  }, [rawStatus, router]);
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    const timeoutId = window.setTimeout(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchParams]);
 
   useEffect(() => {
     let isActive = true;
@@ -92,7 +85,7 @@ export function UploadsQueuePageClient({ activeCompanyId, activeCompanyName }: P
       setErrorMessage(null);
 
       try {
-        const response = await fetch(`/api/uploads?status=${status}`, { cache: "no-store" });
+        const response = await fetch("/api/uploads?status=pending_review", { cache: "no-store" });
         if (!response.ok) {
           if (isActive) {
             setErrorMessage(await parseApiError(response));
@@ -120,36 +113,17 @@ export function UploadsQueuePageClient({ activeCompanyId, activeCompanyName }: P
     return () => {
       isActive = false;
     };
-  }, [status]);
-
-  const oldestPendingItem = useMemo(
-    () => items.find((item) => item.reviewStatus === "pending_review"),
-    [items],
-  );
+  }, []);
 
   return (
     <main className="min-h-screen bg-zinc-50 px-6 py-16 text-zinc-900">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-semibold tracking-tight">Uploads Queue</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">Inbox</h1>
             <p className="mt-1 text-sm text-zinc-600">
-              Processing mode • Active company: {activeCompanyName} (#{activeCompanyId})
+              Company: {activeCompanyName} (#{activeCompanyId})
             </p>
-          </div>
-          <div className="flex gap-2">
-            <Link
-              href="/upload"
-              className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
-            >
-              Open capture mode
-            </Link>
-            <Link
-              href="/"
-              className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
-            >
-              Back to main page
-            </Link>
           </div>
         </header>
 
@@ -165,83 +139,12 @@ export function UploadsQueuePageClient({ activeCompanyId, activeCompanyName }: P
           </p>
         ) : null}
 
-        <section className="rounded border border-zinc-300 bg-white p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href="/uploads?status=pending_review"
-              className={`rounded px-3 py-1.5 text-sm font-medium ${
-                status === "pending_review"
-                  ? "bg-zinc-900 text-white"
-                  : "border border-zinc-300 text-zinc-700 hover:bg-zinc-100"
-              }`}
-            >
-              Pending review
-            </Link>
-            <Link
-              href="/uploads?status=all"
-              className={`rounded px-3 py-1.5 text-sm font-medium ${
-                status === "all"
-                  ? "bg-zinc-900 text-white"
-                  : "border border-zinc-300 text-zinc-700 hover:bg-zinc-100"
-              }`}
-            >
-              All
-            </Link>
-            <Link
-              href="/uploads?status=saved"
-              className={`rounded px-3 py-1.5 text-sm font-medium ${
-                status === "saved"
-                  ? "bg-zinc-900 text-white"
-                  : "border border-zinc-300 text-zinc-700 hover:bg-zinc-100"
-              }`}
-            >
-              Saved
-            </Link>
-          </div>
-        </section>
-
-        <section className="rounded border border-zinc-300 bg-white p-4">
-          {status === "saved" ? (
-            <p className="text-sm text-zinc-700">
-              Showing saved uploads. Switch to <span className="font-medium">Pending review</span>{" "}
-              to continue processing.
-            </p>
-          ) : oldestPendingItem ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <Link
-                href={`/uploads/${oldestPendingItem.id}/review`}
-                className="inline-flex items-center rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
-              >
-                Review oldest pending
-              </Link>
-              <p className="text-sm text-zinc-700">
-                Processing mode is active. You can also review any pending row below.
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center gap-3">
-              <Link
-                href="/upload"
-                className="inline-flex items-center rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
-              >
-                Upload files
-              </Link>
-              <Link
-                href="/"
-                className="inline-flex items-center rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-              >
-                Open yearly overview
-              </Link>
-            </div>
-          )}
-        </section>
-
         <section className="overflow-x-auto rounded border border-zinc-300 bg-white">
           {isLoading ? (
             <p className="px-4 py-3 text-sm text-zinc-600">Loading uploads...</p>
           ) : items.length < 1 ? (
             <p className="px-4 py-3 text-sm text-zinc-600">
-              No uploads in this view. Next step: upload new files or switch filters.
+              No pending uploads. Next step: upload new files.
             </p>
           ) : (
             <table className="w-full min-w-[760px] border-collapse text-left text-sm">
@@ -250,7 +153,6 @@ export function UploadsQueuePageClient({ activeCompanyId, activeCompanyName }: P
                   <th className="px-3 py-2 font-medium">Uploaded at</th>
                   <th className="px-3 py-2 font-medium">Original filename</th>
                   <th className="px-3 py-2 font-medium">Entry type</th>
-                  <th className="px-3 py-2 font-medium">Review status</th>
                   <th className="px-3 py-2 font-medium">Action</th>
                 </tr>
               </thead>
@@ -260,23 +162,13 @@ export function UploadsQueuePageClient({ activeCompanyId, activeCompanyName }: P
                     <td className="px-3 py-2 text-zinc-700">{item.uploadedAt}</td>
                     <td className="px-3 py-2 font-medium text-zinc-900">{item.originalFilename}</td>
                     <td className="px-3 py-2 text-zinc-700">{item.entryType}</td>
-                    <td className="px-3 py-2 text-zinc-700">{getStatusLabel(item.reviewStatus)}</td>
                     <td className="px-3 py-2">
-                      {item.reviewStatus === "pending_review" ? (
-                        <Link
-                          href={`/uploads/${item.id}/review`}
-                          className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
-                        >
-                          Review
-                        </Link>
-                      ) : (
-                        <Link
-                          href="/"
-                          className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
-                        >
-                          Open overview
-                        </Link>
-                      )}
+                      <Link
+                        href={`/uploads/${item.id}/review`}
+                        className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
+                      >
+                        Review
+                      </Link>
                     </td>
                   </tr>
                 ))}

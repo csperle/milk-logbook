@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
   ACTIVE_COMPANY_COOKIE_MAX_AGE_SECONDS,
   ACTIVE_COMPANY_COOKIE_NAME,
@@ -270,20 +269,12 @@ export function CompaniesAdminClient() {
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-8 px-6 py-12">
-      <header className="flex items-start justify-between gap-4">
+      <header className="flex items-start gap-4">
         <div className="flex flex-col gap-2">
           <h1 className="text-2xl font-semibold">Company Admin</h1>
           <p className="text-sm text-zinc-600">
             Manage companies and select the active company used by the app.
           </p>
-        </div>
-        <div className="shrink-0">
-          <Link
-            href="/"
-            className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
-          >
-            Back to main page
-          </Link>
         </div>
       </header>
 

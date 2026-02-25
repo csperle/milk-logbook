@@ -227,6 +227,24 @@ export function countInvoiceUploadsByCompanyId(companyId: number): number {
   return row.count;
 }
 
+export function countPendingUploadQueueItemsByCompanyId(companyId: number): number {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `
+        SELECT COUNT(*) as count
+        FROM invoice_uploads
+        LEFT JOIN accounting_entries
+          ON accounting_entries.upload_id = invoice_uploads.id
+        WHERE invoice_uploads.company_id = ?
+          AND accounting_entries.id IS NULL
+      `,
+    )
+    .get(companyId) as { count: number };
+
+  return row.count;
+}
+
 export function deleteInvoiceUploadById(id: string): void {
   const db = getDb();
   db.prepare("DELETE FROM invoice_uploads WHERE id = ?").run(id);

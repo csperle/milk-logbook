@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 type UploadResponse = {
   id: string;
@@ -38,16 +38,15 @@ async function parseApiError(response: Response): Promise<string> {
 }
 
 export function UploadPageClient({ activeCompanyId, activeCompanyName }: Props) {
+  const router = useRouter();
   const [entryType, setEntryType] = useState<"income" | "expense">("expense");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [lastUploaded, setLastUploaded] = useState<UploadResponse | null>(null);
   const isExpense = entryType === "expense";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setErrorMessage(null);
-    setLastUploaded(null);
 
     const form = event.currentTarget;
     const formData = new FormData(form);
@@ -71,8 +70,8 @@ export function UploadPageClient({ activeCompanyId, activeCompanyName }: Props) 
       }
 
       const payload = (await response.json()) as UploadResponse;
-      form.reset();
-      setLastUploaded(payload);
+      window.dispatchEvent(new Event("uploads:changed"));
+      router.push(`/uploads/${payload.id}/review`);
     } catch {
       setErrorMessage("Upload failed.");
     } finally {
@@ -87,22 +86,8 @@ export function UploadPageClient({ activeCompanyId, activeCompanyName }: Props) 
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">Upload Invoice PDF</h1>
             <p className="mt-1 text-sm text-zinc-600">
-              Capture mode • Active company: {activeCompanyName} (#{activeCompanyId})
+              Company: {activeCompanyName} (#{activeCompanyId})
             </p>
-          </div>
-          <div className="flex gap-2">
-            <Link
-              href="/uploads?status=pending_review"
-              className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
-            >
-              Open processing queue
-            </Link>
-            <Link
-              href="/"
-              className="inline-flex items-center rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
-            >
-              Back to main page
-            </Link>
           </div>
         </header>
 
@@ -111,25 +96,6 @@ export function UploadPageClient({ activeCompanyId, activeCompanyName }: Props) 
             {errorMessage}
           </p>
         ) : null}
-        {lastUploaded ? (
-          <section className="flex flex-wrap items-center gap-3 rounded border border-emerald-300 bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
-            <p className="font-medium">Upload complete. Next step:</p>
-            <Link
-              href={`/uploads/${lastUploaded.id}/review`}
-              className="inline-flex items-center rounded border border-emerald-400 px-3 py-1.5 font-medium hover:bg-emerald-100"
-            >
-              Review this upload now
-            </Link>
-            <Link
-              href="/uploads?status=pending_review"
-              className="inline-flex items-center rounded border border-emerald-400 px-3 py-1.5 font-medium hover:bg-emerald-100"
-            >
-              Go to pending queue
-            </Link>
-            <span>or upload the next file immediately below.</span>
-          </section>
-        ) : null}
-
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded border p-4">
           <div className="flex flex-wrap items-end gap-4">
             <label className="flex flex-col gap-1 text-sm">

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { AccountingEntrySummary } from "@/lib/accounting-entries-repo";
@@ -131,6 +130,17 @@ export function YearlyOverviewClient({
   const entryTypeFilter = parseEntryTypeFilter(searchParams.get("type"));
   const sortOption = parseSortOption(searchParams.get("sort"));
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    const timeoutId = window.setTimeout(() => {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchParams]);
+
   const canonicalQuery = useMemo(() => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("year", String(selectedYear));
@@ -190,38 +200,6 @@ export function YearlyOverviewClient({
             <p className="mt-1 text-sm text-zinc-600">
               Company #{activeCompanyId}
             </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href="/upload"
-              className="inline-flex items-center rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700"
-            >
-              Upload invoice
-            </Link>
-            <Link
-              href="/uploads?status=pending_review"
-              className="inline-flex items-center rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
-            >
-              Open queue
-            </Link>
-            <Link
-              href="/reports/annual-pl"
-              className="inline-flex items-center rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
-            >
-              Annual P&amp;L
-            </Link>
-            <Link
-              href="/admin/companies"
-              className="inline-flex items-center rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
-            >
-              Switch company
-            </Link>
-            <Link
-              href="/admin/expense-types"
-              className="inline-flex items-center rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100"
-            >
-              Edit expense types
-            </Link>
           </div>
         </header>
 
