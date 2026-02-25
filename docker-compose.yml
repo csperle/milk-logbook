@@ -16,13 +16,12 @@ services:
     working_dir: /workspace/app
     volumes:
       - ./:/workspace
-      - ./.codex/prompts:/home/node/.codex/prompts:ro
-      - codex_state:/home/node/.codex/state
+      - codex_home:/home/node/.codex
       - npm_cache:/home/node/.npm
     tty: true
     stdin_open: true
     command: codex
 
 volumes:
-  codex_state:
+  codex_home:
   npm_cache:
