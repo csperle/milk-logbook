@@ -2,7 +2,7 @@
 FROM node:20-trixie-slim
 
 # codex version (can be overridden at build time)
-ARG CODEX_VERSION=0.104.0
+ARG CODEX_VERSION=0.106.0
 
 # Avoid interactive apt prompts
 ENV DEBIAN_FRONTEND=noninteractive
