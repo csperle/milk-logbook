@@ -1,8 +1,9 @@
 # Project State
 
-- Last updated date: 2026-02-25
-- Current goal: implement AI extraction/review/save on top of the updated workflow-first navigation.
+- Last updated date: 2026-02-27
+- Current goal: implement `013-ai-extraction-review-prefill` on top of the established upload/review/save workflow.
 - Active feature spec(s):
+  - `013-ai-extraction-review-prefill` (planned)
   - `012-workflow-first-navigation` (implemented)
 
 ## What is implemented
