@@ -11,6 +11,7 @@ import {
   type UploadEntryType,
   type UploadStatusFilter,
 } from "@/lib/invoice-uploads-repo";
+import { runUploadExtraction } from "@/lib/upload-extraction-service";
 
 export const runtime = "nodejs";
 
@@ -205,6 +206,8 @@ export async function POST(request: Request) {
       uploadedAt,
     });
 
+    void runUploadExtraction(createdUpload);
+
     return NextResponse.json(
       {
         id: createdUpload.id,
@@ -213,6 +216,7 @@ export async function POST(request: Request) {
         originalFilename: createdUpload.originalFilename,
         storedFilename: createdUpload.storedFilename,
         uploadedAt: createdUpload.uploadedAt,
+        extractionStatus: createdUpload.extractionStatus,
       },
       { status: 201 },
     );

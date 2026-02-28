@@ -16,6 +16,11 @@ type ReviewResponse = {
     entryType: "income" | "expense";
     originalFilename: string;
     uploadedAt: string;
+    extractionStatus: "pending" | "succeeded" | "failed";
+    extractionError: {
+      code: string;
+      message: string;
+    } | null;
   };
   draft: {
     documentDate: string;
@@ -176,6 +181,16 @@ function toUserFacingErrorMessage(message: string): string {
     return "Select expense type.";
   }
   return message;
+}
+
+function getExtractionStatusLabel(status: ReviewResponse["upload"]["extractionStatus"]): string {
+  if (status === "pending") {
+    return "Pending extraction";
+  }
+  if (status === "succeeded") {
+    return "Extraction complete";
+  }
+  return "Extraction failed";
 }
 
 export function UploadReviewPageClient({
@@ -519,6 +534,26 @@ export function UploadReviewPageClient({
           <p>
             <span className="font-medium">Uploaded at:</span> {reviewData.upload.uploadedAt}
           </p>
+          <p>
+            <span className="font-medium">Extraction:</span>{" "}
+            <span
+              className={
+                reviewData.upload.extractionStatus === "failed"
+                  ? "text-red-700"
+                  : reviewData.upload.extractionStatus === "succeeded"
+                    ? "text-emerald-700"
+                    : "text-zinc-700"
+              }
+            >
+              {getExtractionStatusLabel(reviewData.upload.extractionStatus)}
+            </span>
+          </p>
+          {reviewData.upload.extractionStatus === "failed" && reviewData.upload.extractionError ? (
+            <p className="text-xs text-red-700">
+              {reviewData.upload.extractionError.message} (
+              {reviewData.upload.extractionError.code})
+            </p>
+          ) : null}
         </section>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

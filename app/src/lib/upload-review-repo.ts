@@ -1,5 +1,10 @@
 import { getDb } from "@/lib/db";
-import { getInvoiceUploadByIdAndCompanyId, type UploadEntryType } from "@/lib/invoice-uploads-repo";
+import {
+  getInvoiceUploadByIdAndCompanyId,
+  type UploadEntryType,
+  type UploadExtractionError,
+  type UploadExtractionStatus,
+} from "@/lib/invoice-uploads-repo";
 
 export type UploadReviewUpload = {
   id: string;
@@ -7,6 +12,8 @@ export type UploadReviewUpload = {
   entryType: UploadEntryType;
   originalFilename: string;
   uploadedAt: string;
+  extractionStatus: UploadExtractionStatus;
+  extractionError: UploadExtractionError | null;
 };
 
 export type UploadReviewDraft = {
@@ -70,6 +77,8 @@ function toUploadReviewUpload(upload: {
   entryType: UploadEntryType;
   originalFilename: string;
   uploadedAt: string;
+  extractionStatus: UploadExtractionStatus;
+  extractionError: UploadExtractionError | null;
 }): UploadReviewUpload {
   return {
     id: upload.id,
@@ -77,6 +86,8 @@ function toUploadReviewUpload(upload: {
     entryType: upload.entryType,
     originalFilename: upload.originalFilename,
     uploadedAt: upload.uploadedAt,
+    extractionStatus: upload.extractionStatus,
+    extractionError: upload.extractionError,
   };
 }
 
@@ -216,4 +227,54 @@ export function saveUploadReviewDraft(input: {
     draft: nextDraft,
     reviewStatus: current.reviewStatus,
   };
+}
+
+export function createUploadReviewDraftFromExtractionIfMissing(input: {
+  uploadId: string;
+  draft: {
+    documentDate: string | null;
+    counterpartyName: string | null;
+    bookingText: string | null;
+    amountGross: number;
+    amountNet: number | null;
+    amountTax: number | null;
+    paymentReceivedDate: string | null;
+  };
+}): boolean {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  const result = db
+    .prepare(
+      `
+        INSERT OR IGNORE INTO upload_review_drafts (
+          upload_id,
+          document_date,
+          counterparty_name,
+          booking_text,
+          amount_gross,
+          amount_net,
+          amount_tax,
+          payment_received_date,
+          type_of_expense_id,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    )
+    .run(
+      input.uploadId,
+      input.draft.documentDate,
+      input.draft.counterpartyName,
+      input.draft.bookingText,
+      input.draft.amountGross,
+      input.draft.amountNet,
+      input.draft.amountTax,
+      input.draft.paymentReceivedDate,
+      null,
+      now,
+      now,
+    );
+
+  return result.changes > 0;
 }

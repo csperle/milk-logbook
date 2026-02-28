@@ -1,6 +1,12 @@
 import { getDb } from "@/lib/db";
 
 export type UploadEntryType = "income" | "expense";
+export type UploadExtractionStatus = "pending" | "succeeded" | "failed";
+
+export type UploadExtractionError = {
+  code: string;
+  message: string;
+};
 
 export type InvoiceUpload = {
   id: string;
@@ -10,6 +16,9 @@ export type InvoiceUpload = {
   storedFilename: string;
   storedPath: string;
   uploadedAt: string;
+  extractionStatus: UploadExtractionStatus;
+  extractionError: UploadExtractionError | null;
+  extractedAt: string | null;
 };
 
 export type UploadReviewStatus = "pending_review" | "saved";
@@ -37,6 +46,10 @@ type InvoiceUploadRow = {
   stored_filename: string;
   stored_path: string;
   uploaded_at: string;
+  extraction_status: UploadExtractionStatus;
+  extraction_error_code: string | null;
+  extraction_error_message: string | null;
+  extracted_at: string | null;
 };
 
 type UploadQueueItemRow = {
@@ -51,6 +64,9 @@ type UploadQueueItemRow = {
 };
 
 function mapInvoiceUpload(row: InvoiceUploadRow): InvoiceUpload {
+  const hasExtractionError =
+    typeof row.extraction_error_code === "string" && typeof row.extraction_error_message === "string";
+
   return {
     id: row.id,
     companyId: row.company_id,
@@ -59,6 +75,14 @@ function mapInvoiceUpload(row: InvoiceUploadRow): InvoiceUpload {
     storedFilename: row.stored_filename,
     storedPath: row.stored_path,
     uploadedAt: row.uploaded_at,
+    extractionStatus: row.extraction_status,
+    extractionError: hasExtractionError
+      ? {
+          code: row.extraction_error_code as string,
+          message: row.extraction_error_message as string,
+        }
+      : null,
+    extractedAt: row.extracted_at,
   };
 }
 
@@ -82,8 +106,9 @@ export function createInvoiceUpload(input: {
         original_filename,
         stored_filename,
         stored_path,
-        uploaded_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        uploaded_at,
+        extraction_status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
     input.id,
@@ -93,6 +118,7 @@ export function createInvoiceUpload(input: {
     input.storedFilename,
     input.storedPath,
     input.uploadedAt,
+    "pending",
   );
 
   const createdRow = db
@@ -105,7 +131,11 @@ export function createInvoiceUpload(input: {
           original_filename,
           stored_filename,
           stored_path,
-          uploaded_at
+          uploaded_at,
+          extraction_status,
+          extraction_error_code,
+          extraction_error_message,
+          extracted_at
         FROM invoice_uploads
         WHERE id = ?
       `,
@@ -134,7 +164,11 @@ export function getInvoiceUploadByIdAndCompanyId(
           original_filename,
           stored_filename,
           stored_path,
-          uploaded_at
+          uploaded_at,
+          extraction_status,
+          extraction_error_code,
+          extraction_error_message,
+          extracted_at
         FROM invoice_uploads
         WHERE id = ? AND company_id = ?
       `,
@@ -248,4 +282,51 @@ export function countPendingUploadQueueItemsByCompanyId(companyId: number): numb
 export function deleteInvoiceUploadById(id: string): void {
   const db = getDb();
   db.prepare("DELETE FROM invoice_uploads WHERE id = ?").run(id);
+}
+
+export function markInvoiceUploadExtractionSucceeded(input: {
+  id: string;
+  extractedAt: string;
+}): boolean {
+  const db = getDb();
+  const result = db
+    .prepare(
+      `
+        UPDATE invoice_uploads
+        SET
+          extraction_status = 'succeeded',
+          extraction_error_code = NULL,
+          extraction_error_message = NULL,
+          extracted_at = ?
+        WHERE id = ?
+          AND extraction_status = 'pending'
+      `,
+    )
+    .run(input.extractedAt, input.id);
+
+  return result.changes > 0;
+}
+
+export function markInvoiceUploadExtractionFailed(input: {
+  id: string;
+  code: string;
+  message: string;
+}): boolean {
+  const db = getDb();
+  const result = db
+    .prepare(
+      `
+        UPDATE invoice_uploads
+        SET
+          extraction_status = 'failed',
+          extraction_error_code = ?,
+          extraction_error_message = ?,
+          extracted_at = NULL
+        WHERE id = ?
+          AND extraction_status = 'pending'
+      `,
+    )
+    .run(input.code, input.message, input.id);
+
+  return result.changes > 0;
 }

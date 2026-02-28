@@ -174,6 +174,50 @@ function ensureAccountingEntriesColumns(db: Database.Database): void {
   `);
 }
 
+function ensureInvoiceUploadsExtractionColumns(db: Database.Database): void {
+  const columns = db
+    .prepare("PRAGMA table_info(invoice_uploads)")
+    .all() as Array<{ name: string }>;
+  const columnNames = new Set(columns.map((column) => column.name));
+  const hadExtractionStatus = columnNames.has("extraction_status");
+
+  if (!hadExtractionStatus) {
+    db.exec(`
+      ALTER TABLE invoice_uploads
+      ADD COLUMN extraction_status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (extraction_status IN ('pending', 'succeeded', 'failed'));
+    `);
+  }
+
+  if (!columnNames.has("extraction_error_code")) {
+    db.exec("ALTER TABLE invoice_uploads ADD COLUMN extraction_error_code TEXT;");
+  }
+
+  if (!columnNames.has("extraction_error_message")) {
+    db.exec("ALTER TABLE invoice_uploads ADD COLUMN extraction_error_message TEXT;");
+  }
+
+  if (!columnNames.has("extracted_at")) {
+    db.exec("ALTER TABLE invoice_uploads ADD COLUMN extracted_at TEXT;");
+  }
+
+  // Backfill uploads created before extraction feature existed.
+  if (!hadExtractionStatus) {
+    db.exec(`
+      UPDATE invoice_uploads
+      SET
+        extraction_status = 'failed',
+        extraction_error_code = 'EXTRACTION_NOT_ATTEMPTED',
+        extraction_error_message = 'Upload predates AI extraction feature',
+        extracted_at = NULL
+      WHERE extraction_status = 'pending'
+        AND extraction_error_code IS NULL
+        AND extraction_error_message IS NULL
+        AND extracted_at IS NULL;
+    `);
+  }
+}
+
 function initializeSchema(db: Database.Database): void {
   db.exec(`
     PRAGMA foreign_keys = ON;
@@ -203,6 +247,10 @@ function initializeSchema(db: Database.Database): void {
       original_filename TEXT NOT NULL,
       stored_filename TEXT NOT NULL UNIQUE,
       stored_path TEXT NOT NULL,
+      extraction_status TEXT NOT NULL DEFAULT 'pending' CHECK(extraction_status IN ('pending', 'succeeded', 'failed')),
+      extraction_error_code TEXT,
+      extraction_error_message TEXT,
+      extracted_at TEXT,
       uploaded_at TEXT NOT NULL,
       FOREIGN KEY (company_id)
         REFERENCES companies (id)
@@ -269,6 +317,7 @@ function initializeSchema(db: Database.Database): void {
   ensureExpenseTypeSortOrder(db);
   ensureAccountingEntriesCompanyColumn(db);
   ensureAccountingEntriesColumns(db);
+  ensureInvoiceUploadsExtractionColumns(db);
 }
 
 export function getDb(): Database.Database {
