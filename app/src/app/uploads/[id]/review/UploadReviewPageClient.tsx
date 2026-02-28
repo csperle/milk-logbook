@@ -65,26 +65,94 @@ function toFormState(response: ReviewResponse): DraftFormState {
     documentDate: response.draft.documentDate,
     counterpartyName: response.draft.counterpartyName,
     bookingText: response.draft.bookingText,
-    amountGross: String(response.draft.amountGross),
-    amountNet: response.draft.amountNet === null ? "0" : String(response.draft.amountNet),
-    amountTax: response.draft.amountTax === null ? "0" : String(response.draft.amountTax),
+    amountGross: formatRappenAsChfInput(response.draft.amountGross),
+    amountNet:
+      response.draft.amountNet === null ? "" : formatRappenAsChfInput(response.draft.amountNet),
+    amountTax:
+      response.draft.amountTax === null ? "" : formatRappenAsChfInput(response.draft.amountTax),
     paymentReceivedDate: response.draft.paymentReceivedDate ?? "",
     typeOfExpenseId:
       response.draft.typeOfExpenseId === null ? "" : String(response.draft.typeOfExpenseId),
   };
 }
 
-function parseIntegerString(value: string): number | null {
+function formatRappenAsChfInput(value: number): string {
+  const francs = Math.floor(value / 100);
+  const rappen = value % 100;
+  return `${francs}.${String(rappen).padStart(2, "0")}`;
+}
+
+function parseChfInputToRappen(value: string): number | null {
   const trimmed = value.trim();
   if (trimmed.length < 1) {
     return null;
   }
 
-  if (!/^-?\d+$/.test(trimmed)) {
+  if (/^-/.test(trimmed) || /[^0-9.,'’\s]/.test(trimmed)) {
+    return Number.NaN;
+  }
+
+  const noSpaces = trimmed.replace(/\s+/g, "").replace(/['’]/g, "");
+  const lastDotIndex = noSpaces.lastIndexOf(".");
+  const lastCommaIndex = noSpaces.lastIndexOf(",");
+  const decimalIndex = Math.max(lastDotIndex, lastCommaIndex);
+
+  if (decimalIndex < 0) {
+    const wholeOnly = noSpaces.replace(/[.,]/g, "");
+    if (!/^\d+$/.test(wholeOnly)) {
+      return Number.NaN;
+    }
+
+    const parsedWhole = Number.parseInt(wholeOnly, 10);
+    if (!Number.isSafeInteger(parsedWhole)) {
+      return Number.NaN;
+    }
+    return parsedWhole * 100;
+  }
+
+  const wholeRaw = noSpaces.slice(0, decimalIndex).replace(/[.,]/g, "");
+  const decimalRaw = noSpaces.slice(decimalIndex + 1).replace(/[.,]/g, "");
+
+  if (!/^\d+$/.test(wholeRaw) || !/^\d*$/.test(decimalRaw) || decimalRaw.length > 2) {
+    return Number.NaN;
+  }
+
+  const parsedWhole = Number.parseInt(wholeRaw, 10);
+  if (!Number.isSafeInteger(parsedWhole)) {
+    return Number.NaN;
+  }
+
+  const decimalPadded = decimalRaw.padEnd(2, "0");
+  const parsedDecimal = decimalPadded.length > 0 ? Number.parseInt(decimalPadded, 10) : 0;
+  if (!Number.isSafeInteger(parsedDecimal)) {
+    return Number.NaN;
+  }
+
+  return parsedWhole * 100 + parsedDecimal;
+}
+
+function parsePositiveIntegerString(value: string): number | null {
+  const trimmed = value.trim();
+  if (trimmed.length < 1) {
+    return null;
+  }
+
+  if (!/^\d+$/.test(trimmed)) {
     return Number.NaN;
   }
 
   return Number.parseInt(trimmed, 10);
+}
+
+function getLocaleDecimalSeparator(): string {
+  const decimalPart = new Intl.NumberFormat(undefined, {
+    useGrouping: false,
+    minimumFractionDigits: 1,
+  })
+    .formatToParts(1.1)
+    .find((part) => part.type === "decimal");
+
+  return decimalPart?.value ?? ".";
 }
 
 async function parseApiError(response: Response): Promise<{ code?: string; message: string }> {
@@ -166,38 +234,75 @@ export function UploadReviewPageClient({
   }, [uploadId]);
 
   const isExpense = reviewData?.upload.entryType === "expense";
+  const decimalSeparator = useMemo(() => getLocaleDecimalSeparator(), []);
+  const amountPlaceholder = decimalSeparator === "," ? "0,00" : "0.00";
 
   const draftPayload = useMemo(() => {
     if (!formState) {
       return null;
     }
 
-    const amountGrossParsed = parseIntegerString(formState.amountGross);
-    const amountNetParsed = parseIntegerString(formState.amountNet);
-    const amountTaxParsed = parseIntegerString(formState.amountTax);
-    const typeOfExpenseIdParsed = parseIntegerString(formState.typeOfExpenseId);
+    const amountGrossParsed = parseChfInputToRappen(formState.amountGross);
+    const amountNetParsed = parseChfInputToRappen(formState.amountNet);
+    const amountTaxParsed = parseChfInputToRappen(formState.amountTax);
+    const typeOfExpenseIdParsed = parsePositiveIntegerString(formState.typeOfExpenseId);
 
-    if (
-      Number.isNaN(amountGrossParsed) ||
-      Number.isNaN(amountNetParsed) ||
-      Number.isNaN(amountTaxParsed) ||
-      Number.isNaN(typeOfExpenseIdParsed)
-    ) {
+    if (Number.isNaN(amountGrossParsed)) {
       return {
         ok: false as const,
-        message: "Amount fields and expense type id must use whole numbers (integers).",
+        message: "Amount gross must be a valid CHF amount.",
       };
     }
 
     if (amountGrossParsed === null) {
-      return { ok: false as const, message: "amountGross is required." };
+      return { ok: false as const, message: "Amount gross is required." };
+    }
+
+    const counterpartyNameTrimmed = formState.counterpartyName.trim();
+    if (counterpartyNameTrimmed.length < 1) {
+      return {
+        ok: false as const,
+        message: "Counterparty name is required.",
+      };
+    }
+
+    if (counterpartyNameTrimmed.length > 200) {
+      return {
+        ok: false as const,
+        message: "Counterparty name must be at most 200 characters.",
+      };
+    }
+
+    if (Number.isNaN(amountNetParsed)) {
+      return {
+        ok: false as const,
+        message: "Amount net must be a valid CHF amount or left empty.",
+      };
+    }
+
+    if (Number.isNaN(amountTaxParsed)) {
+      return {
+        ok: false as const,
+        message: "Amount tax must be a valid CHF amount or left empty.",
+      };
+    }
+
+    if (Number.isNaN(typeOfExpenseIdParsed)) {
+      return {
+        ok: false as const,
+        message: "Expense type is invalid. Please select a value from the list.",
+      };
+    }
+
+    if (isExpense && typeOfExpenseIdParsed === null) {
+      return { ok: false as const, message: "Select expense type." };
     }
 
     return {
       ok: true as const,
       payload: {
         documentDate: formState.documentDate,
-        counterpartyName: formState.counterpartyName,
+        counterpartyName: counterpartyNameTrimmed,
         bookingText: formState.bookingText,
         amountGross: amountGrossParsed,
         amountNet: amountNetParsed,
@@ -207,7 +312,7 @@ export function UploadReviewPageClient({
         typeOfExpenseId: typeOfExpenseIdParsed,
       },
     };
-  }, [formState]);
+  }, [formState, isExpense]);
 
   async function handleSaveDraft(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -492,10 +597,11 @@ export function UploadReviewPageClient({
 
             <div className="grid gap-4 md:grid-cols-3">
               <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium">Amount gross (cents)</span>
+                <span className="font-medium">Amount gross (CHF)</span>
                 <input
-                  type="number"
-                  step="1"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder={amountPlaceholder}
                   value={formState.amountGross}
                   onChange={(event) => {
                     setFormState((current) =>
@@ -507,10 +613,11 @@ export function UploadReviewPageClient({
               </label>
 
               <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium">Amount net (cents)</span>
+                <span className="font-medium">Amount net (CHF)</span>
                 <input
-                  type="number"
-                  step="1"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder={amountPlaceholder}
                   value={formState.amountNet}
                   onChange={(event) => {
                     setFormState((current) =>
@@ -522,10 +629,11 @@ export function UploadReviewPageClient({
               </label>
 
               <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium">Amount tax (cents)</span>
+                <span className="font-medium">Amount tax (CHF)</span>
                 <input
-                  type="number"
-                  step="1"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder={amountPlaceholder}
                   value={formState.amountTax}
                   onChange={(event) => {
                     setFormState((current) =>

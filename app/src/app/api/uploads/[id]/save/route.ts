@@ -72,11 +72,11 @@ function validateSaveInput(input: {
   }
 
   const bookingText = input.draft.bookingText.trim();
-  if (bookingText.length < 1 || bookingText.length > 500) {
+  if (bookingText.length > 500) {
     return {
       ok: false,
       code: "VALIDATION_ERROR",
-      message: "bookingText must be non-empty and at most 500 characters.",
+      message: "bookingText must be at most 500 characters.",
     };
   }
 

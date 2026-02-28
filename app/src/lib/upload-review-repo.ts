@@ -42,7 +42,7 @@ function defaultDraft(uploadedAt: string): UploadReviewDraft {
   return {
     documentDate: uploadedAt.slice(0, 10),
     counterpartyName: "Pending extraction",
-    bookingText: "Pending extraction",
+    bookingText: "",
     amountGross: 0,
     amountNet: null,
     amountTax: null,
