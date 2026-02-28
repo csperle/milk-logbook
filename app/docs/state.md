@@ -1,9 +1,9 @@
 # Project State
 
-- Last updated date: 2026-02-27
-- Current goal: implement `013-ai-extraction-review-prefill` on top of the established upload/review/save workflow.
+- Last updated date: 2026-02-28
+- Current goal: implement annual P&L export/generation workflow on top of the implemented extraction-enabled upload/review/save workflow.
 - Active feature spec(s):
-  - `013-ai-extraction-review-prefill` (planned)
+  - `013-ai-extraction-review-prefill` (implemented)
   - `012-workflow-first-navigation` (implemented)
 
 ## What is implemented
@@ -55,7 +55,7 @@
   - `POST /api/uploads/:id/save`
 - Review page UI is available at `/uploads/[id]/review` and is protected by active-company context guard.
 - Draft persistence is implemented in `upload_review_drafts` (1:1 by `upload_id`), resumable across reload/navigation.
-- Deterministic draft defaults are used when no draft exists (`Pending extraction`, zero gross, nullable conditional fields).
+- Deterministic draft defaults are used when no draft exists (`counterpartyName: Pending extraction`, `bookingText: ""`, zero gross, nullable conditional fields).
 - Final accounting entry is created only on explicit save action.
 - Booking entries persistence is implemented in `accounting_entries` with:
   - sequence key `(company_id, document_year, entry_type)`
@@ -169,10 +169,43 @@
   - derived Gross Profit, Operating Result, Net Profit / Loss
 - Annual P&L details view now renders expense detail groups under their matching categorized summary line item.
 - Annual P&L table now includes a dedicated first math-role column (`+ Add`, `- Sub`, `= Total`) with blank header for readability.
+- AI extraction review prefill slice (`013-ai-extraction-review-prefill`) is implemented.
+- Upload API `POST /api/uploads` now returns `extractionStatus` and starts asynchronous extraction after successful upload persistence.
+- `invoice_uploads` now persists extraction lifecycle metadata:
+  - `extraction_status` (`pending|succeeded|failed`)
+  - `extraction_error_code`
+  - `extraction_error_message`
+  - `extracted_at`
+- Existing uploads are backfilled to deterministic non-pending extraction metadata:
+  - `extraction_status = failed`
+  - `extraction_error_code = EXTRACTION_NOT_ATTEMPTED`
+  - `extraction_error_message = Upload predates AI extraction feature`
+- OpenAI extraction integration is implemented behind dedicated modules:
+  - `src/lib/openai/invoice-extraction.ts`
+  - `src/lib/upload-extraction-service.ts`
+- Extraction uses `gpt-5-mini` by default, strict Structured Output JSON schema, and deterministic failure mapping:
+  - `EXTRACTION_PROVIDER_ERROR`
+  - `EXTRACTION_TIMEOUT`
+  - `EXTRACTION_INVALID_OUTPUT`
+  - `EXTRACTION_CONFIG_MISSING`
+  - `EXTRACTION_PERSISTENCE_FAILED`
+- AI prefill writes to `upload_review_drafts` with insert-only semantics (`INSERT OR IGNORE`) so user-authored drafts are never overwritten.
+- Review API `GET /api/uploads/:id/review` now includes extraction metadata on `upload`:
+  - `extractionStatus`
+  - `extractionError` (`null` unless failed)
+- Review page `/uploads/[id]/review` now shows extraction-aware UI:
+  - status indicator (`Pending extraction`, `Extraction complete`, `Extraction failed`)
+  - inline spinner while extraction is pending
+  - polling-based status refresh and automatic prefill hydration when extraction completes (without manual refresh)
+  - `Save draft` remains available while pending; final-save actions are temporarily disabled until extraction completes
+- Review amount fields now use CHF user input with decimal parsing/formatting, while API/storage remains integer rappen.
+- Manual OpenAI extraction test tooling is available:
+  - script: `scripts/test-openai-pdf-extraction.mjs`
+  - npm command: `npm run test:extraction`
+  - guide: `docs/guides/how-to-test-openai-pdf-extraction.md`
 
 ## What remains
 - Implement next planned features:
-- AI extraction/review/save on top of the established review/save workflow
 - Annual P&L export/generation workflow
 
 ## How to run (dev/validation)

@@ -82,7 +82,8 @@ Users should arrive on `/uploads/[id]/review` with meaningful prefilled fields t
 
 9. Save behavior compatibility
 
-- `POST /api/uploads/:id/save` validation and document-numbering behavior from `005` remains unchanged.
+- `POST /api/uploads/:id/save` keeps document-numbering and entry-type validation behavior from `005`.
+- Exception: `bookingText` may be empty (still capped at max length).
 - AI-prefilled fields are treated exactly like user-entered draft values at final save.
 
 10. Provider abstraction
@@ -274,8 +275,8 @@ If extraction failed, include deterministic optional info:
   "upload": {
     "extractionStatus": "failed",
     "extractionError": {
-      "code": "EXTRACTION_FAILED",
-      "message": "Extraction did not complete successfully"
+      "code": "EXTRACTION_PROVIDER_ERROR",
+      "message": "Extraction provider request failed."
     }
   }
 }
@@ -310,8 +311,11 @@ All non-2xx responses keep the deterministic shape:
 
 Deterministic extraction-related codes introduced in this slice:
 
-- `EXTRACTION_FAILED` (`500` or internally mapped status where applicable)
-- `EXTRACTION_PERSISTENCE_FAILED` (`500`)
+- `EXTRACTION_PROVIDER_ERROR`
+- `EXTRACTION_TIMEOUT`
+- `EXTRACTION_INVALID_OUTPUT`
+- `EXTRACTION_CONFIG_MISSING`
+- `EXTRACTION_PERSISTENCE_FAILED`
 
 Notes:
 - `UPLOAD_NOT_FOUND` and active-company behavior remain unchanged.
@@ -333,6 +337,9 @@ Notes:
   - `Pending extraction`
   - `Extraction complete`
   - `Extraction failed` (with concise helper text)
+- While extraction is pending:
+  - keep form inputs and `Save draft` available
+  - temporarily disable `Save entry` and `Save entry and next`
 - Keep existing actions unchanged:
   - `Save draft`
   - `Save entry`
@@ -340,7 +347,8 @@ Notes:
 
 ### 5.3 UX invariants
 
-- User can always continue manually even if extraction is pending or failed.
+- User can continue manual editing even if extraction is pending or failed.
+- While extraction is pending, final-save actions may be temporarily disabled.
 - AI prefill must never silently erase user-entered values.
 
 ---
@@ -392,8 +400,8 @@ Notes:
 - [ ] Review prefill uses AI values when available and valid.
 - [ ] User-authored draft values are never overwritten by later extraction writes.
 - [ ] `PUT /api/uploads/:id/review` behavior from `005` remains unchanged.
-- [ ] `POST /api/uploads/:id/save` validation/document-numbering behavior from `005` remains unchanged.
-- [ ] Review page displays extraction status (`pending|succeeded|failed`) without blocking manual completion.
+- [ ] `POST /api/uploads/:id/save` keeps `005` numbering/entry-type behavior (with `bookingText` allowed empty).
+- [ ] Review page displays extraction status (`pending|succeeded|failed`) without blocking manual editing.
 - [ ] Active-company scoping and `UPLOAD_NOT_FOUND` behavior remain unchanged.
 - [ ] Deterministic error payload shape is preserved for all endpoint failures.
 - [ ] `npm run lint` and `npm run build` pass after implementation.
