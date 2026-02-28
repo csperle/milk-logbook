@@ -208,6 +208,12 @@ export function UploadReviewPageClient({
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [reviewData, setReviewData] = useState<ReviewResponse | null>(null);
   const [formState, setFormState] = useState<DraftFormState | null>(null);
+  const [hasLocalEdits, setHasLocalEdits] = useState(false);
+
+  function updateFormField<K extends keyof DraftFormState>(field: K, value: DraftFormState[K]) {
+    setHasLocalEdits(true);
+    setFormState((current) => (current ? { ...current, [field]: value } : current));
+  }
 
   useEffect(() => {
     let isActive = true;
@@ -229,6 +235,7 @@ export function UploadReviewPageClient({
         if (isActive) {
           setReviewData(payload);
           setFormState(toFormState(payload));
+          setHasLocalEdits(false);
         }
       } catch {
         if (isActive) {
@@ -248,7 +255,42 @@ export function UploadReviewPageClient({
     };
   }, [uploadId]);
 
+  useEffect(() => {
+    if (reviewData?.upload.extractionStatus !== "pending") {
+      return;
+    }
+
+    let isActive = true;
+    const intervalId = window.setInterval(async () => {
+      try {
+        const response = await fetch(`/api/uploads/${uploadId}/review`, { cache: "no-store" });
+        if (!response.ok || !isActive) {
+          return;
+        }
+
+        const payload = (await response.json()) as ReviewResponse;
+        if (!isActive) {
+          return;
+        }
+
+        setReviewData(payload);
+
+        if (!hasLocalEdits) {
+          setFormState(toFormState(payload));
+        }
+      } catch {
+        // Keep polling silent to avoid distracting the review flow.
+      }
+    }, 3000);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(intervalId);
+    };
+  }, [reviewData?.upload.extractionStatus, uploadId, hasLocalEdits]);
+
   const isExpense = reviewData?.upload.entryType === "expense";
+  const isExtractionPending = reviewData?.upload.extractionStatus === "pending";
   const decimalSeparator = useMemo(() => getLocaleDecimalSeparator(), []);
   const amountPlaceholder = decimalSeparator === "," ? "0,00" : "0.00";
 
@@ -361,6 +403,7 @@ export function UploadReviewPageClient({
       const payload = (await response.json()) as ReviewResponse;
       setReviewData(payload);
       setFormState(toFormState(payload));
+      setHasLocalEdits(false);
       setFeedback({ tone: "info", message: "Draft saved." });
     } catch {
       setFeedback({ tone: "error", message: "Could not save draft." });
@@ -536,18 +579,29 @@ export function UploadReviewPageClient({
           </p>
           <p>
             <span className="font-medium">Extraction:</span>{" "}
-            <span
-              className={
-                reviewData.upload.extractionStatus === "failed"
-                  ? "text-red-700"
-                  : reviewData.upload.extractionStatus === "succeeded"
-                    ? "text-emerald-700"
-                    : "text-zinc-700"
-              }
-            >
-              {getExtractionStatusLabel(reviewData.upload.extractionStatus)}
+            <span className="inline-flex items-center gap-2">
+              {isExtractionPending ? (
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-zinc-300 border-t-zinc-700" />
+              ) : null}
+              <span
+                className={
+                  reviewData.upload.extractionStatus === "failed"
+                    ? "text-red-700"
+                    : reviewData.upload.extractionStatus === "succeeded"
+                      ? "text-emerald-700"
+                      : "text-zinc-700"
+                }
+              >
+                {getExtractionStatusLabel(reviewData.upload.extractionStatus)}
+              </span>
             </span>
           </p>
+          {isExtractionPending ? (
+            <p className="text-xs text-zinc-600">
+              AI is extracting values. You can edit fields now; final save is enabled when
+              extraction finishes.
+            </p>
+          ) : null}
           {reviewData.upload.extractionStatus === "failed" && reviewData.upload.extractionError ? (
             <p className="text-xs text-red-700">
               {reviewData.upload.extractionError.message} (
@@ -595,9 +649,7 @@ export function UploadReviewPageClient({
                 type="date"
                 value={formState.documentDate}
                 onChange={(event) => {
-                  setFormState((current) =>
-                    current ? { ...current, documentDate: event.target.value } : current,
-                  );
+                  updateFormField("documentDate", event.target.value);
                 }}
                 className="rounded border border-zinc-300 px-3 py-2"
               />
@@ -609,9 +661,7 @@ export function UploadReviewPageClient({
                 type="text"
                 value={formState.counterpartyName}
                 onChange={(event) => {
-                  setFormState((current) =>
-                    current ? { ...current, counterpartyName: event.target.value } : current,
-                  );
+                  updateFormField("counterpartyName", event.target.value);
                 }}
                 className="rounded border border-zinc-300 px-3 py-2"
               />
@@ -622,9 +672,7 @@ export function UploadReviewPageClient({
               <textarea
                 value={formState.bookingText}
                 onChange={(event) => {
-                  setFormState((current) =>
-                    current ? { ...current, bookingText: event.target.value } : current,
-                  );
+                  updateFormField("bookingText", event.target.value);
                 }}
                 className="min-h-28 rounded border border-zinc-300 px-3 py-2"
               />
@@ -639,9 +687,7 @@ export function UploadReviewPageClient({
                   placeholder={amountPlaceholder}
                   value={formState.amountGross}
                   onChange={(event) => {
-                    setFormState((current) =>
-                      current ? { ...current, amountGross: event.target.value } : current,
-                    );
+                    updateFormField("amountGross", event.target.value);
                   }}
                   className="rounded border border-zinc-300 px-3 py-2"
                 />
@@ -655,9 +701,7 @@ export function UploadReviewPageClient({
                   placeholder={amountPlaceholder}
                   value={formState.amountNet}
                   onChange={(event) => {
-                    setFormState((current) =>
-                      current ? { ...current, amountNet: event.target.value } : current,
-                    );
+                    updateFormField("amountNet", event.target.value);
                   }}
                   className="rounded border border-zinc-300 px-3 py-2"
                 />
@@ -671,9 +715,7 @@ export function UploadReviewPageClient({
                   placeholder={amountPlaceholder}
                   value={formState.amountTax}
                   onChange={(event) => {
-                    setFormState((current) =>
-                      current ? { ...current, amountTax: event.target.value } : current,
-                    );
+                    updateFormField("amountTax", event.target.value);
                   }}
                   className="rounded border border-zinc-300 px-3 py-2"
                 />
@@ -686,9 +728,7 @@ export function UploadReviewPageClient({
                 <select
                   value={formState.typeOfExpenseId}
                   onChange={(event) => {
-                    setFormState((current) =>
-                      current ? { ...current, typeOfExpenseId: event.target.value } : current,
-                    );
+                    updateFormField("typeOfExpenseId", event.target.value);
                   }}
                   className="rounded border border-zinc-300 px-3 py-2"
                 >
@@ -707,9 +747,7 @@ export function UploadReviewPageClient({
                   type="date"
                   value={formState.paymentReceivedDate}
                   onChange={(event) => {
-                    setFormState((current) =>
-                      current ? { ...current, paymentReceivedDate: event.target.value } : current,
-                    );
+                    updateFormField("paymentReceivedDate", event.target.value);
                   }}
                   className="rounded border border-zinc-300 px-3 py-2"
                 />
@@ -730,7 +768,7 @@ export function UploadReviewPageClient({
                   onClick={() => {
                     void handleSaveEntry({ andNext: true });
                   }}
-                  disabled={isSavingEntry || isSavingEntryAndNext}
+                  disabled={isSavingEntry || isSavingEntryAndNext || isExtractionPending}
                   className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-500"
                 >
                   {isSavingEntryAndNext ? "Saving and opening next..." : "Save entry and next"}
@@ -741,12 +779,17 @@ export function UploadReviewPageClient({
                 onClick={() => {
                   void handleSaveEntry({ andNext: false });
                 }}
-                disabled={isSavingEntry || isSavingEntryAndNext}
+                disabled={isSavingEntry || isSavingEntryAndNext || isExtractionPending}
                 className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isSavingEntry ? "Saving entry..." : "Save entry"}
               </button>
             </div>
+            {isExtractionPending ? (
+              <p className="text-xs text-zinc-600">
+                Final save buttons are temporarily disabled while extraction is in progress.
+              </p>
+            ) : null}
           </form>
         </div>
       </div>
