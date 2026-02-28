@@ -89,6 +89,126 @@ Users should arrive on `/uploads/[id]/review` with meaningful prefilled fields t
 
 - Extraction integration must be encapsulated behind a dedicated module (for example `src/lib/openai/*`) so prompt/schema changes do not spread through route handlers.
 
+11. Model selection
+
+- Default extraction model for this slice is `gpt-5-mini`.
+- Extraction must use Structured Outputs (JSON schema) to enforce deterministic field shapes.
+- If model output is schema-invalid after one normalization attempt, mark extraction as failed for this slice (no automatic second model attempt).
+- Future slice may add optional escalation for hard cases (for example to `gpt-5.1`), but this is out of scope here.
+
+12. Prompt and API-call contract
+
+- Extraction integration uses both:
+  - a strict instruction prompt
+  - a strict Structured Output JSON schema
+- Prompt-only extraction is not sufficient for deterministic behavior in this app.
+- After model response, backend validation still applies before draft persistence.
+
+Recommended prompt template for this slice:
+
+```text
+You extract bookkeeping fields from a single invoice PDF.
+
+Return ONLY JSON matching the provided schema.
+
+Rules:
+- Do not guess. If a field is missing or unclear, return null.
+- Use date format YYYY-MM-DD.
+- Amount fields must be integer cents (CHF/rappen), non-negative.
+- Parse common number formats (apostrophe/comma/dot/space thousands separators).
+- amountGross is required by schema; if missing, return 0.
+- amountNet and amountTax are optional; return null when not confidently present.
+- Keep text fields concise and source-faithful.
+- paymentReceivedDate is only for income documents; otherwise return null.
+- Never output markdown or extra keys.
+```
+
+Schema/validation requirements:
+
+- Schema must include exactly:
+  - `documentDate`
+  - `counterpartyName`
+  - `bookingText`
+  - `amountGross`
+  - `amountNet`
+  - `amountTax`
+  - `paymentReceivedDate`
+- No additional keys accepted.
+- Backend re-validates:
+  - strict date format
+  - integer non-negative amount constraints
+  - type constraints from review draft API
+- Schema-invalid or post-validation-invalid outputs map to deterministic failure code `EXTRACTION_INVALID_OUTPUT`.
+
+Implementation insights from manual API testing:
+
+- Responses API `input_file.file_data` must be sent as a data URL, not raw base64.
+  - required format: `data:application/pdf;base64,<BASE64_CONTENT>`
+  - sending raw base64 causes deterministic API validation error:
+    - `invalid_request_error`
+    - `param: input[0].content[0].file_data`
+
+### 3.1 Pre-implementation decisions (resolved)
+
+1. Rule for "user-authored draft exists"
+
+- A draft is treated as user-authored once a row exists in `upload_review_drafts` for the upload.
+- Extraction prefill must be insert-only for draft creation:
+  - create draft from extraction only when no row exists yet
+  - never update an existing draft row from extraction
+- This guarantees "user edits always win" without field-level merge complexity.
+
+2. Async extraction execution model
+
+- Keep this slice local-first and infrastructure-minimal:
+  - `POST /api/uploads` persists file + metadata, returns `201` immediately
+  - extraction is kicked off in-process as a best-effort background task after persistence
+- No separate job queue/worker is introduced in this slice.
+- On process interruption/restart, uploads may remain `pending`; they stay manually reviewable.
+
+3. Concurrency and idempotency
+
+- Extraction finalization updates are single-write from `pending` only:
+  - success/failure status update uses `WHERE extraction_status = 'pending'`
+  - if status already left `pending`, later completion attempts are ignored
+- Draft prefill uses "insert if absent" semantics for deterministic race handling.
+
+4. Extraction error taxonomy and API mapping
+
+- Provider/internal errors are persisted on `invoice_uploads` and exposed through `GET /api/uploads/:id/review` metadata, not as terminal API errors for normal review reads.
+- Deterministic stored failure codes for this slice:
+  - `EXTRACTION_PROVIDER_ERROR` (model/provider call failure)
+  - `EXTRACTION_TIMEOUT` (provider/network timeout)
+  - `EXTRACTION_INVALID_OUTPUT` (output failed normalization/validation)
+  - `EXTRACTION_PERSISTENCE_FAILED` (DB write failure while finalizing extraction)
+  - `EXTRACTION_CONFIG_MISSING` (missing OpenAI config, e.g. API key)
+- `EXTRACTION_INVALID_OUTPUT` also covers schema-invalid Structured Output responses from `gpt-5-mini`.
+- External API error payload shape remains unchanged.
+
+5. Existing-upload migration policy
+
+- Migration adds new extraction columns with defaults for new rows.
+- Existing rows are backfilled to:
+  - `extraction_status = 'failed'`
+  - `extraction_error_code = 'EXTRACTION_NOT_ATTEMPTED'`
+  - `extraction_error_message = 'Upload predates AI extraction feature'`
+  - `extracted_at = NULL`
+- This avoids indefinite `pending` status for historical uploads and keeps behavior explicit.
+
+6. Normalization rules for extracted values
+
+- Dates must be strict `YYYY-MM-DD` and pass existing date validation logic used by review APIs.
+- Monetary parsing accepts common invoice number formatting (`'`, `.`, `,`, spaces) and normalizes to integer cents.
+- Invalid, negative, or overflow amounts are discarded and fall back to deterministic defaults/nulls.
+- `amountGross` defaults to `0` when missing/invalid; optional amounts (`amountNet`, `amountTax`) fall back to `null`.
+
+7. Review response shape stability
+
+- `GET /api/uploads/:id/review` always returns:
+  - `upload.extractionStatus`
+  - `upload.extractionError` (object when failed, otherwise `null`)
+- This keeps client handling deterministic and avoids optional-field branching.
+
 ---
 
 ## 4) Interfaces / API
@@ -288,3 +408,47 @@ Notes:
 - `src/app/api/uploads/route.ts`
 - `src/app/api/uploads/[id]/review/route.ts`
 - `src/app/uploads/[id]/review/UploadReviewPageClient.tsx`
+
+---
+
+## 10) Extraction quality checklist (implementation guidance)
+
+The following items increase extraction quality and should be considered during implementation or immediate follow-up slices:
+
+1. Input handling strategy
+
+- Prefer direct PDF input for native/digital PDFs.
+- Define deterministic fallback behavior for low-quality scans (for example OCR-first path in a future slice).
+
+2. Parsing and normalization hardening
+
+- Keep all amount/date/text normalization in a single backend module.
+- Normalize Swiss-relevant number formats deterministically before draft persistence.
+
+3. Edge-case policy
+
+- Define deterministic handling for:
+  - credit notes / negative totals
+  - multi-page or multi-document PDFs
+  - missing/ambiguous invoice dates
+  - mixed VAT presentations
+
+4. Validation-first persistence
+
+- Never persist raw model output directly.
+- Persist only schema-valid + backend-valid values; otherwise use deterministic defaults and/or fail with `EXTRACTION_INVALID_OUTPUT`.
+
+5. Observability
+
+- Log extraction lifecycle events with upload id and deterministic failure code.
+- Track counts/rates for `succeeded`, `failed`, and key failure codes for iterative improvement.
+
+6. Regression corpus
+
+- Maintain a representative local invoice sample set for manual and automated comparison when prompt/model logic changes.
+- Re-check extraction quality before changing prompt text, schema, or model version.
+
+7. UX-assisted quality
+
+- Keep manual correction path fast and obvious on review page (especially for failed/pending extraction).
+- Ensure extraction status is visible and non-blocking so users can complete bookkeeping deterministically.
