@@ -84,6 +84,7 @@ function buildPrompt(entryType) {
     "- amountNet and amountTax are optional; return null when not confidently present.",
     "- Keep text fields concise and source-faithful.",
     "- paymentReceivedDate is only for income documents; otherwise return null.",
+    "- 'Christoph Sperle' is NEVER the counterpartyName because it is the name of the invoice recipient.",
     "- Never output markdown or extra keys.",
     "",
     `Document entryType context: ${entryType}.`,
