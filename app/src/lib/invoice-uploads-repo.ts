@@ -1,7 +1,8 @@
 import { getDb } from "@/lib/db";
 
 export type UploadEntryType = "income" | "expense";
-export type UploadExtractionStatus = "pending" | "succeeded" | "failed";
+export type UploadExtractionStatus = "pending" | "succeeded" | "failed" | "skipped";
+export type UploadExtractionMethod = "none" | "gpt-5-mini" | "local-ai";
 
 export type UploadExtractionError = {
   code: string;
@@ -17,6 +18,7 @@ export type InvoiceUpload = {
   storedPath: string;
   uploadedAt: string;
   extractionStatus: UploadExtractionStatus;
+  extractionMethodUsed: UploadExtractionMethod;
   extractionError: UploadExtractionError | null;
   extractedAt: string | null;
 };
@@ -47,6 +49,7 @@ type InvoiceUploadRow = {
   stored_path: string;
   uploaded_at: string;
   extraction_status: UploadExtractionStatus;
+  extraction_method_used: UploadExtractionMethod;
   extraction_error_code: string | null;
   extraction_error_message: string | null;
   extracted_at: string | null;
@@ -76,6 +79,7 @@ function mapInvoiceUpload(row: InvoiceUploadRow): InvoiceUpload {
     storedPath: row.stored_path,
     uploadedAt: row.uploaded_at,
     extractionStatus: row.extraction_status,
+    extractionMethodUsed: row.extraction_method_used,
     extractionError: hasExtractionError
       ? {
           code: row.extraction_error_code as string,
@@ -94,6 +98,8 @@ export function createInvoiceUpload(input: {
   storedFilename: string;
   storedPath: string;
   uploadedAt: string;
+  extractionMethodUsed: UploadExtractionMethod;
+  extractionStatus: UploadExtractionStatus;
 }): InvoiceUpload {
   const db = getDb();
 
@@ -107,8 +113,9 @@ export function createInvoiceUpload(input: {
         stored_filename,
         stored_path,
         uploaded_at,
-        extraction_status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        extraction_status,
+        extraction_method_used
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
   ).run(
     input.id,
@@ -118,7 +125,8 @@ export function createInvoiceUpload(input: {
     input.storedFilename,
     input.storedPath,
     input.uploadedAt,
-    "pending",
+    input.extractionStatus,
+    input.extractionMethodUsed,
   );
 
   const createdRow = db
@@ -133,6 +141,7 @@ export function createInvoiceUpload(input: {
           stored_path,
           uploaded_at,
           extraction_status,
+          extraction_method_used,
           extraction_error_code,
           extraction_error_message,
           extracted_at
@@ -166,6 +175,7 @@ export function getInvoiceUploadByIdAndCompanyId(
           stored_path,
           uploaded_at,
           extraction_status,
+          extraction_method_used,
           extraction_error_code,
           extraction_error_message,
           extracted_at

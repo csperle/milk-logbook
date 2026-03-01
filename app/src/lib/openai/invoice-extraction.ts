@@ -10,10 +10,12 @@ type ExtractionErrorCode =
 
 export class InvoiceExtractionError extends Error {
   code: ExtractionErrorCode;
+  details?: Record<string, unknown>;
 
-  constructor(code: ExtractionErrorCode, message: string) {
+  constructor(code: ExtractionErrorCode, message: string, details?: Record<string, unknown>) {
     super(message);
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -39,7 +41,27 @@ function getModel(): string {
   return DEFAULT_MODEL;
 }
 
-function buildPrompt(entryType: UploadEntryType): string {
+function joinBaseUrlAndPath(baseUrl: string, pathName: string): string {
+  const normalizedBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+  const normalizedPath = pathName.startsWith("/") ? pathName : `/${pathName}`;
+  return `${normalizedBase}${normalizedPath}`;
+}
+
+async function readResponseBodySnippet(response: Response): Promise<string> {
+  try {
+    const body = await response.text();
+    const trimmed = body.trim();
+    if (trimmed.length < 1) {
+      return "<empty body>";
+    }
+
+    return trimmed.slice(0, 400);
+  } catch {
+    return "<unreadable body>";
+  }
+}
+
+export function buildInvoiceExtractionPrompt(entryType: UploadEntryType): string {
   return [
     "You extract bookkeeping fields from a single invoice PDF.",
     "",
@@ -61,7 +83,7 @@ function buildPrompt(entryType: UploadEntryType): string {
   ].join("\n");
 }
 
-function getSchema() {
+export function getInvoiceExtractionSchema() {
   return {
     type: "object",
     additionalProperties: false,
@@ -86,7 +108,7 @@ function getSchema() {
   };
 }
 
-function tryExtractJsonText(responseJson: unknown): string | null {
+export function tryExtractJsonText(responseJson: unknown): string | null {
   if (!responseJson || typeof responseJson !== "object") {
     return null;
   }
@@ -214,55 +236,67 @@ function normalizePayload(payload: unknown, entryType: UploadEntryType): Extract
   };
 }
 
-export async function extractInvoiceDraftFromPdf(input: {
-  storedPath: string;
+export function parseExtractedInvoiceDraftFromResponsesJson(input: {
+  responseJson: unknown;
   entryType: UploadEntryType;
-}): Promise<ExtractedInvoiceDraft> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) {
-    throw new InvoiceExtractionError(
-      "EXTRACTION_CONFIG_MISSING",
-      "Missing OpenAI API key configuration.",
-    );
-  }
-
-  const absolutePath = path.join(process.cwd(), input.storedPath);
-  const pdfBuffer = await fs.readFile(absolutePath);
-  if (pdfBuffer.length < 5 || pdfBuffer.subarray(0, 5).toString("utf-8") !== "%PDF-") {
+}): ExtractedInvoiceDraft {
+  const jsonText = tryExtractJsonText(input.responseJson);
+  if (!jsonText) {
     throw new InvoiceExtractionError(
       "EXTRACTION_INVALID_OUTPUT",
-      "Stored upload file is not a valid PDF.",
+      "Model response did not include extraction output.",
     );
   }
 
-  const timeoutMs = Number.parseInt(process.env.OPENAI_EXTRACTION_TIMEOUT_MS ?? "", 10);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new InvoiceExtractionError(
+      "EXTRACTION_INVALID_OUTPUT",
+      "Model response was not valid JSON.",
+    );
+  }
+
+  return normalizePayload(parsed, input.entryType);
+}
+
+export async function runResponsesApiInvoiceExtraction(input: {
+  apiBaseUrl: string;
+  apiKey: string | null;
+  model: string;
+  timeoutMs: number;
+  filename: string;
+  pdfBase64: string;
+  entryType: UploadEntryType;
+}): Promise<ExtractedInvoiceDraft> {
   const effectiveTimeoutMs =
-    Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS;
+    Number.isFinite(input.timeoutMs) && input.timeoutMs > 0 ? input.timeoutMs : DEFAULT_TIMEOUT_MS;
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), effectiveTimeoutMs);
 
   let response: Response;
   try {
-    response = await fetch("https://api.openai.com/v1/responses", {
+    response = await fetch(joinBaseUrlAndPath(input.apiBaseUrl, "/responses"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+        ...(input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {}),
       },
       body: JSON.stringify({
-        model: getModel(),
+        model: input.model,
         input: [
           {
             role: "user",
             content: [
               {
                 type: "input_file",
-                filename: path.basename(input.storedPath),
-                file_data: `data:application/pdf;base64,${pdfBuffer.toString("base64")}`,
+                filename: input.filename,
+                file_data: `data:application/pdf;base64,${input.pdfBase64}`,
               },
               {
                 type: "input_text",
-                text: buildPrompt(input.entryType),
+                text: buildInvoiceExtractionPrompt(input.entryType),
               },
             ],
           },
@@ -272,7 +306,7 @@ export async function extractInvoiceDraftFromPdf(input: {
             type: "json_schema",
             name: "invoice_extraction",
             strict: true,
-            schema: getSchema(),
+            schema: getInvoiceExtractionSchema(),
           },
         },
       }),
@@ -299,23 +333,201 @@ export async function extractInvoiceDraftFromPdf(input: {
     );
   }
 
-  const jsonText = tryExtractJsonText(responseJson);
-  if (!jsonText) {
-    throw new InvoiceExtractionError(
-      "EXTRACTION_INVALID_OUTPUT",
-      "Model response did not include extraction output.",
-    );
-  }
+  return parseExtractedInvoiceDraftFromResponsesJson({
+    responseJson,
+    entryType: input.entryType,
+  });
+}
 
-  let parsed: unknown;
+export async function testResponsesApiStructuredOutput(input: {
+  apiBaseUrl: string;
+  apiKey: string | null;
+  model: string;
+  timeoutMs: number;
+}): Promise<{ latencyMs: number }> {
+  const effectiveTimeoutMs =
+    Number.isFinite(input.timeoutMs) && input.timeoutMs > 0 ? input.timeoutMs : DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), effectiveTimeoutMs);
+  const startedAt = Date.now();
+
+  const modelsUrl = joinBaseUrlAndPath(input.apiBaseUrl, "/models");
+  const responsesUrl = joinBaseUrlAndPath(input.apiBaseUrl, "/responses");
+
   try {
-    parsed = JSON.parse(jsonText);
-  } catch {
+    const modelsResponse = await fetch(modelsUrl, {
+      method: "GET",
+      headers: input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {},
+      signal: controller.signal,
+    });
+    if (!modelsResponse.ok) {
+      const bodySnippet = await readResponseBodySnippet(modelsResponse);
+      throw new InvoiceExtractionError(
+        "EXTRACTION_PROVIDER_ERROR",
+        `Step 'provider-reachability' failed: GET /models returned ${modelsResponse.status}.`,
+        {
+          step: "provider-reachability",
+          url: modelsUrl,
+          httpStatus: modelsResponse.status,
+          responseBodySnippet: bodySnippet,
+        },
+      );
+    }
+
+    const response = await fetch(responsesUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model: input.model,
+        input: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: "Return a JSON object with key 'ok' set to true.",
+              },
+            ],
+          },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "local_ai_health_check",
+            strict: true,
+            schema: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                ok: { type: "boolean" },
+              },
+              required: ["ok"],
+            },
+          },
+        },
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const bodySnippet = await readResponseBodySnippet(response);
+      throw new InvoiceExtractionError(
+        "EXTRACTION_PROVIDER_ERROR",
+        `Step 'structured-output' failed: POST /responses returned ${response.status}.`,
+        {
+          step: "structured-output",
+          url: responsesUrl,
+          httpStatus: response.status,
+          responseBodySnippet: bodySnippet,
+        },
+      );
+    }
+
+    const payload = await response.json();
+    const jsonText = tryExtractJsonText(payload);
+    if (!jsonText) {
+      throw new InvoiceExtractionError(
+        "EXTRACTION_INVALID_OUTPUT",
+        "Structured output test did not return JSON text.",
+        {
+          step: "structured-output",
+          url: responsesUrl,
+        },
+      );
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      throw new InvoiceExtractionError(
+        "EXTRACTION_INVALID_OUTPUT",
+        "Structured output test returned invalid JSON.",
+        {
+          step: "structured-output",
+          url: responsesUrl,
+        },
+      );
+    }
+
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      (parsed as Record<string, unknown>).ok !== true
+    ) {
+      throw new InvoiceExtractionError(
+        "EXTRACTION_INVALID_OUTPUT",
+        "Structured output test JSON shape was invalid.",
+        {
+          step: "structured-output",
+          url: responsesUrl,
+        },
+      );
+    }
+
+    return { latencyMs: Date.now() - startedAt };
+  } catch (error) {
+    if (error instanceof InvoiceExtractionError) {
+      throw error;
+    }
+
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new InvoiceExtractionError("EXTRACTION_TIMEOUT", "Model request timed out.", {
+        step: "provider-reachability-or-structured-output",
+        modelsUrl,
+        responsesUrl,
+        timeoutMs: effectiveTimeoutMs,
+      });
+    }
+
     throw new InvoiceExtractionError(
-      "EXTRACTION_INVALID_OUTPUT",
-      "Model response was not valid JSON.",
+      "EXTRACTION_PROVIDER_ERROR",
+      `Model request failed before response: ${error instanceof Error ? error.message : "unknown error"}.`,
+      {
+        step: "provider-reachability-or-structured-output",
+        modelsUrl,
+        responsesUrl,
+      },
+    );
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
+
+export async function extractInvoiceDraftFromPdf(input: {
+  storedPath: string;
+  entryType: UploadEntryType;
+}): Promise<ExtractedInvoiceDraft> {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new InvoiceExtractionError(
+      "EXTRACTION_CONFIG_MISSING",
+      "Missing OpenAI API key configuration.",
     );
   }
 
-  return normalizePayload(parsed, input.entryType);
+  const absolutePath = path.join(process.cwd(), input.storedPath);
+  const pdfBuffer = await fs.readFile(absolutePath);
+  if (pdfBuffer.length < 5 || pdfBuffer.subarray(0, 5).toString("utf-8") !== "%PDF-") {
+    throw new InvoiceExtractionError(
+      "EXTRACTION_INVALID_OUTPUT",
+      "Stored upload file is not a valid PDF.",
+    );
+  }
+
+  const timeoutMs = Number.parseInt(process.env.OPENAI_EXTRACTION_TIMEOUT_MS ?? "", 10);
+  const effectiveTimeoutMs =
+    Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS;
+
+  return runResponsesApiInvoiceExtraction({
+    apiBaseUrl: "https://api.openai.com/v1",
+    apiKey,
+    model: getModel(),
+    timeoutMs: effectiveTimeoutMs,
+    filename: path.basename(input.storedPath),
+    pdfBase64: pdfBuffer.toString("base64"),
+    entryType: input.entryType,
+  });
 }

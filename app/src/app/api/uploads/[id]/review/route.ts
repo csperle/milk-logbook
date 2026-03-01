@@ -77,10 +77,13 @@ function validateDraftPatch(payload: unknown): {
   const patch: Partial<UploadReviewDraft> = {};
 
   if ("documentDate" in rawPatch) {
-    if (typeof rawPatch.documentDate !== "string" || !isValidDateOnly(rawPatch.documentDate)) {
-      return { ok: false, message: "documentDate must be a valid YYYY-MM-DD string." };
+    if (
+      rawPatch.documentDate !== null &&
+      (typeof rawPatch.documentDate !== "string" || !isValidDateOnly(rawPatch.documentDate))
+    ) {
+      return { ok: false, message: "documentDate must be a valid YYYY-MM-DD string or null." };
     }
-    patch.documentDate = rawPatch.documentDate;
+    patch.documentDate = rawPatch.documentDate as string | null;
   }
 
   if ("counterpartyName" in rawPatch) {

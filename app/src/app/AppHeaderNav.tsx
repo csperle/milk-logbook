@@ -134,6 +134,12 @@ export function AppHeaderNav({ hasActiveCompany, activeCompanyName, pendingInbox
               >
                 Expense types
               </Link>
+              <Link
+                href="/admin/extraction"
+                className="block rounded px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
+              >
+                Extraction method
+              </Link>
             </div>
           </details>
         </div>

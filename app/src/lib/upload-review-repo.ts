@@ -3,6 +3,7 @@ import {
   getInvoiceUploadByIdAndCompanyId,
   type UploadEntryType,
   type UploadExtractionError,
+  type UploadExtractionMethod,
   type UploadExtractionStatus,
 } from "@/lib/invoice-uploads-repo";
 
@@ -13,11 +14,12 @@ export type UploadReviewUpload = {
   originalFilename: string;
   uploadedAt: string;
   extractionStatus: UploadExtractionStatus;
+  extractionMethodUsed: UploadExtractionMethod;
   extractionError: UploadExtractionError | null;
 };
 
 export type UploadReviewDraft = {
-  documentDate: string;
+  documentDate: string | null;
   counterpartyName: string;
   bookingText: string;
   amountGross: number;
@@ -45,10 +47,11 @@ type UploadReviewDraftRow = {
   type_of_expense_id: number | null;
 };
 
-function defaultDraft(uploadedAt: string): UploadReviewDraft {
+function defaultDraft(uploadedAt: string, extractionMethodUsed: UploadExtractionMethod): UploadReviewDraft {
+  const isManualOnly = extractionMethodUsed === "none";
   return {
-    documentDate: uploadedAt.slice(0, 10),
-    counterpartyName: "Pending extraction",
+    documentDate: isManualOnly ? null : uploadedAt.slice(0, 10),
+    counterpartyName: isManualOnly ? "" : "Pending extraction",
     bookingText: "",
     amountGross: 0,
     amountNet: null,
@@ -78,6 +81,7 @@ function toUploadReviewUpload(upload: {
   originalFilename: string;
   uploadedAt: string;
   extractionStatus: UploadExtractionStatus;
+  extractionMethodUsed: UploadExtractionMethod;
   extractionError: UploadExtractionError | null;
 }): UploadReviewUpload {
   return {
@@ -87,6 +91,7 @@ function toUploadReviewUpload(upload: {
     originalFilename: upload.originalFilename,
     uploadedAt: upload.uploadedAt,
     extractionStatus: upload.extractionStatus,
+    extractionMethodUsed: upload.extractionMethodUsed,
     extractionError: upload.extractionError,
   };
 }
@@ -124,7 +129,7 @@ export function getUploadReviewByUploadIdAndCompanyId(
     return null;
   }
 
-  const fallbackDraft = defaultDraft(upload.uploadedAt);
+  const fallbackDraft = defaultDraft(upload.uploadedAt, upload.extractionMethodUsed);
   const draftRow = getDraftRow(uploadId);
   const hasSavedEntry = getDb()
     .prepare(

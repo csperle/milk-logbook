@@ -9,6 +9,7 @@ let dbInstance: Database.Database | null = null;
 
 const EXPENSE_PL_CATEGORY_CHECK =
   "('direct_cost','operating_expense','financial_other','tax')";
+const EXTRACTION_METHOD_CHECK = "('none', 'gpt-5-mini', 'local-ai')";
 
 function ensureExpenseTypeSortOrder(db: Database.Database): void {
   const columns = db
@@ -201,6 +202,12 @@ function ensureInvoiceUploadsExtractionColumns(db: Database.Database): void {
     db.exec("ALTER TABLE invoice_uploads ADD COLUMN extracted_at TEXT;");
   }
 
+  if (!columnNames.has("extraction_method_used")) {
+    db.exec(
+      "ALTER TABLE invoice_uploads ADD COLUMN extraction_method_used TEXT NOT NULL DEFAULT 'gpt-5-mini';",
+    );
+  }
+
   // Backfill uploads created before extraction feature existed.
   if (!hadExtractionStatus) {
     db.exec(`
@@ -216,6 +223,60 @@ function ensureInvoiceUploadsExtractionColumns(db: Database.Database): void {
         AND extracted_at IS NULL;
     `);
   }
+
+  db.exec(`
+    UPDATE invoice_uploads
+    SET extraction_method_used = CASE
+      WHEN extraction_error_code = 'EXTRACTION_NOT_ATTEMPTED' THEN 'none'
+      ELSE 'gpt-5-mini'
+    END
+    WHERE extraction_method_used IS NULL
+       OR extraction_method_used NOT IN ('none', 'gpt-5-mini', 'local-ai');
+  `);
+
+}
+
+function ensureAppSettings(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      extraction_method TEXT NOT NULL CHECK(extraction_method IN ${EXTRACTION_METHOD_CHECK}),
+      local_ai_base_url TEXT,
+      local_ai_model TEXT,
+      local_ai_api_key TEXT,
+      local_ai_timeout_ms INTEGER,
+      updated_at TEXT NOT NULL
+    );
+  `);
+
+  const existing = db
+    .prepare("SELECT id FROM app_settings WHERE id = 1")
+    .get() as { id: number } | undefined;
+  if (existing) {
+    return;
+  }
+
+  db.prepare(
+    `
+      INSERT INTO app_settings (
+        id,
+        extraction_method,
+        local_ai_base_url,
+        local_ai_model,
+        local_ai_api_key,
+        local_ai_timeout_ms,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `,
+  ).run(
+    1,
+    "gpt-5-mini",
+    "http://127.0.0.1:1234/v1",
+    "",
+    null,
+    30000,
+    new Date().toISOString(),
+  );
 }
 
 function initializeSchema(db: Database.Database): void {
@@ -247,10 +308,11 @@ function initializeSchema(db: Database.Database): void {
       original_filename TEXT NOT NULL,
       stored_filename TEXT NOT NULL UNIQUE,
       stored_path TEXT NOT NULL,
-      extraction_status TEXT NOT NULL DEFAULT 'pending' CHECK(extraction_status IN ('pending', 'succeeded', 'failed')),
+      extraction_status TEXT NOT NULL DEFAULT 'pending' CHECK(extraction_status IN ('pending', 'succeeded', 'failed', 'skipped')),
       extraction_error_code TEXT,
       extraction_error_message TEXT,
       extracted_at TEXT,
+      extraction_method_used TEXT NOT NULL DEFAULT 'gpt-5-mini' CHECK(extraction_method_used IN ('none', 'gpt-5-mini', 'local-ai')),
       uploaded_at TEXT NOT NULL,
       FOREIGN KEY (company_id)
         REFERENCES companies (id)
@@ -318,6 +380,7 @@ function initializeSchema(db: Database.Database): void {
   ensureAccountingEntriesCompanyColumn(db);
   ensureAccountingEntriesColumns(db);
   ensureInvoiceUploadsExtractionColumns(db);
+  ensureAppSettings(db);
 }
 
 export function getDb(): Database.Database {

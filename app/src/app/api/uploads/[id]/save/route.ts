@@ -46,7 +46,7 @@ function isValidDateOnly(value: string): boolean {
 function validateSaveInput(input: {
   entryType: "income" | "expense";
   draft: {
-    documentDate: string;
+    documentDate: string | null;
     counterpartyName: string;
     bookingText: string;
     amountGross: number;
@@ -54,7 +54,7 @@ function validateSaveInput(input: {
     typeOfExpenseId: number | null;
   };
 }): { ok: true } | { ok: false; code: SaveErrorCode; message: string } {
-  if (!isValidDateOnly(input.draft.documentDate)) {
+  if (input.draft.documentDate === null || !isValidDateOnly(input.draft.documentDate)) {
     return {
       ok: false,
       code: "VALIDATION_ERROR",
@@ -125,7 +125,6 @@ function validateSaveInput(input: {
         message: "typeOfExpenseId is required for expense entries.",
       };
     }
-
   }
 
   return { ok: true };
@@ -179,6 +178,11 @@ export async function POST(_: Request, { params }: Params) {
     return errorResponse(400, validation.code, validation.message);
   }
 
+  const documentDate = reviewData.draft.documentDate;
+  if (documentDate === null) {
+    return errorResponse(400, "VALIDATION_ERROR", "documentDate must be a valid YYYY-MM-DD date.");
+  }
+
   try {
     const saveResult = saveAccountingEntryFromUploadReview({
       companyId: activeCompanyId,
@@ -187,6 +191,7 @@ export async function POST(_: Request, { params }: Params) {
       originalFilename: reviewData.upload.originalFilename,
       draft: {
         ...reviewData.draft,
+        documentDate,
         counterpartyName: reviewData.draft.counterpartyName.trim(),
         bookingText: reviewData.draft.bookingText.trim(),
       },

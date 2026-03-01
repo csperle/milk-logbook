@@ -1,14 +1,18 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import {
   markInvoiceUploadExtractionFailed,
   markInvoiceUploadExtractionSucceeded,
   type InvoiceUpload,
 } from "@/lib/invoice-uploads-repo";
+import { getRuntimeExtractionSettings } from "@/lib/extraction-settings-repo";
 import {
   createUploadReviewDraftFromExtractionIfMissing,
 } from "@/lib/upload-review-repo";
 import {
   extractInvoiceDraftFromPdf,
   InvoiceExtractionError,
+  runResponsesApiInvoiceExtraction,
 } from "@/lib/openai/invoice-extraction";
 
 const EXTRACTION_FAILURE_MESSAGES: Record<string, string> = {
@@ -33,12 +37,41 @@ function mapErrorToFailure(error: unknown): { code: string; message: string } {
   };
 }
 
+async function extractWithLocalAi(upload: InvoiceUpload) {
+  const settings = getRuntimeExtractionSettings();
+  const baseUrl = settings.localAi.baseUrl.trim();
+  const model = settings.localAi.model.trim();
+  if (baseUrl.length < 1 || model.length < 1) {
+    throw new InvoiceExtractionError(
+      "EXTRACTION_CONFIG_MISSING",
+      "Local AI extraction configuration is missing.",
+    );
+  }
+
+  return runResponsesApiInvoiceExtraction({
+    apiBaseUrl: baseUrl,
+    apiKey: settings.localAi.apiKey?.trim() ? settings.localAi.apiKey.trim() : null,
+    model,
+    timeoutMs: settings.localAi.timeoutMs,
+    filename: upload.storedFilename,
+    pdfBase64: (await fs.readFile(path.join(process.cwd(), upload.storedPath))).toString("base64"),
+    entryType: upload.entryType,
+  });
+}
+
 export async function runUploadExtraction(upload: InvoiceUpload): Promise<void> {
+  if (upload.extractionMethodUsed === "none") {
+    return;
+  }
+
   try {
-    const extractedDraft = await extractInvoiceDraftFromPdf({
-      storedPath: upload.storedPath,
-      entryType: upload.entryType,
-    });
+    const extractedDraft =
+      upload.extractionMethodUsed === "local-ai"
+        ? await extractWithLocalAi(upload)
+        : await extractInvoiceDraftFromPdf({
+            storedPath: upload.storedPath,
+            entryType: upload.entryType,
+          });
 
     try {
       createUploadReviewDraftFromExtractionIfMissing({

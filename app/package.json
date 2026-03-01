@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:extraction": "node scripts/test-openai-pdf-extraction.mjs"
+    "test:openai-extraction": "node scripts/test-openai-pdf-extraction.mjs",
+    "test:local-extraction": "node scripts/test-local-ai-pdf-extraction.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.6.2",

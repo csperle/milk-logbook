@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { ACTIVE_COMPANY_COOKIE_NAME, parseActiveCompanyId } from "@/lib/active-company";
 import { listCompanies } from "@/lib/companies-repo";
+import { getRuntimeExtractionSettings } from "@/lib/extraction-settings-repo";
 import {
   createInvoiceUpload,
   listUploadQueueItemsByCompanyId,
@@ -196,6 +197,10 @@ export async function POST(request: Request) {
   }
 
   try {
+    const runtimeExtractionSettings = getRuntimeExtractionSettings();
+    const extractionMethodUsed = runtimeExtractionSettings.extractionMethod;
+    const extractionStatus = extractionMethodUsed === "none" ? "skipped" : "pending";
+
     const createdUpload = createInvoiceUpload({
       id: uploadId,
       companyId: activeCompany.activeCompanyId,
@@ -204,9 +209,13 @@ export async function POST(request: Request) {
       storedFilename,
       storedPath,
       uploadedAt,
+      extractionMethodUsed,
+      extractionStatus,
     });
 
-    void runUploadExtraction(createdUpload);
+    if (createdUpload.extractionStatus === "pending") {
+      void runUploadExtraction(createdUpload);
+    }
 
     return NextResponse.json(
       {
@@ -217,6 +226,7 @@ export async function POST(request: Request) {
         storedFilename: createdUpload.storedFilename,
         uploadedAt: createdUpload.uploadedAt,
         extractionStatus: createdUpload.extractionStatus,
+        extractionMethodUsed: createdUpload.extractionMethodUsed,
       },
       { status: 201 },
     );

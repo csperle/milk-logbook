@@ -248,7 +248,7 @@ export function saveAccountingEntryFromUploadReview(input: {
   uploadId: string;
   entryType: UploadEntryType;
   originalFilename: string;
-  draft: UploadReviewDraft;
+  draft: Omit<UploadReviewDraft, "documentDate"> & { documentDate: string };
 }): SaveEntryFromUploadResult {
   const db = getDb();
   const now = new Date().toISOString();

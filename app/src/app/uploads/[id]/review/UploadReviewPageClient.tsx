@@ -16,14 +16,15 @@ type ReviewResponse = {
     entryType: "income" | "expense";
     originalFilename: string;
     uploadedAt: string;
-    extractionStatus: "pending" | "succeeded" | "failed";
+    extractionStatus: "pending" | "succeeded" | "failed" | "skipped";
+    extractionMethodUsed: "none" | "gpt-5-mini" | "local-ai";
     extractionError: {
       code: string;
       message: string;
     } | null;
   };
   draft: {
-    documentDate: string;
+    documentDate: string | null;
     counterpartyName: string;
     bookingText: string;
     amountGross: number;
@@ -67,7 +68,7 @@ type DraftFormState = {
 
 function toFormState(response: ReviewResponse): DraftFormState {
   return {
-    documentDate: response.draft.documentDate,
+    documentDate: response.draft.documentDate ?? "",
     counterpartyName: response.draft.counterpartyName,
     bookingText: response.draft.bookingText,
     amountGross: formatRappenAsChfInput(response.draft.amountGross),
@@ -189,6 +190,9 @@ function getExtractionStatusLabel(status: ReviewResponse["upload"]["extractionSt
   }
   if (status === "succeeded") {
     return "Extraction complete";
+  }
+  if (status === "skipped") {
+    return "Extraction disabled";
   }
   return "Extraction failed";
 }
@@ -358,7 +362,7 @@ export function UploadReviewPageClient({
     return {
       ok: true as const,
       payload: {
-        documentDate: formState.documentDate,
+        documentDate: formState.documentDate.trim().length < 1 ? null : formState.documentDate,
         counterpartyName: counterpartyNameTrimmed,
         bookingText: formState.bookingText,
         amountGross: amountGrossParsed,
@@ -578,6 +582,10 @@ export function UploadReviewPageClient({
             <span className="font-medium">Uploaded at:</span> {reviewData.upload.uploadedAt}
           </p>
           <p>
+            <span className="font-medium">Extraction method:</span>{" "}
+            {reviewData.upload.extractionMethodUsed}
+          </p>
+          <p>
             <span className="font-medium">Extraction:</span>{" "}
             <span className="inline-flex items-center gap-2">
               {isExtractionPending ? (
@@ -589,6 +597,8 @@ export function UploadReviewPageClient({
                     ? "text-red-700"
                     : reviewData.upload.extractionStatus === "succeeded"
                       ? "text-emerald-700"
+                      : reviewData.upload.extractionStatus === "skipped"
+                        ? "text-zinc-700"
                       : "text-zinc-700"
                 }
               >

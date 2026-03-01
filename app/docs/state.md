@@ -1,10 +1,9 @@
 # Project State
 
-- Last updated date: 2026-02-28
-- Current goal: implement annual P&L export/generation workflow on top of the implemented extraction-enabled upload/review/save workflow.
+- Last updated date: 2026-03-01
+- Current goal: implement extraction-method administration (`none`, `gpt-5-mini`, `local-ai`) for upload review prefill routing.
 - Active feature spec(s):
-  - `013-ai-extraction-review-prefill` (implemented)
-  - `012-workflow-first-navigation` (implemented)
+  - `014-extraction-method-administration` (planned)
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -206,6 +205,7 @@
 
 ## What remains
 - Implement next planned features:
+- Extraction method administration workflow (`014-extraction-method-administration`)
 - Annual P&L export/generation workflow
 
 ## How to run (dev/validation)
