@@ -271,7 +271,7 @@ function ensureAppSettings(db: Database.Database): void {
   ).run(
     1,
     "gpt-5-mini",
-    "http://127.0.0.1:1234/v1",
+    "http://host.docker.internal:1234/v1",
     "",
     null,
     30000,

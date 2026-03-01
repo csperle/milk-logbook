@@ -3,7 +3,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const DEFAULT_BASE_URL = "http://127.0.0.1:1234/v1";
+const DEFAULT_BASE_URL = "http://host.docker.internal:1234/v1";
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MODEL = "local-model";
 
