@@ -1,6 +1,6 @@
 # 014-extraction-method-administration
 
-- Status: Planned
+- Status: Implemented
 
 ## 1) Goal
 

@@ -1,9 +1,9 @@
 # Project State
 
 - Last updated date: 2026-03-01
-- Current goal: implement extraction-method administration (`none`, `gpt-5-mini`, `local-ai`) for upload review prefill routing.
+- Current goal: implement annual P&L export/generation workflow.
 - Active feature spec(s):
-  - `014-extraction-method-administration` (planned)
+  - `014-extraction-method-administration` (implemented)
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -202,10 +202,30 @@
   - script: `scripts/test-openai-pdf-extraction.mjs`
   - npm command: `npm run test:extraction`
   - guide: `docs/guides/how-to-test-openai-pdf-extraction.md`
+- Extraction method administration slice (`014-extraction-method-administration`) is implemented.
+- New administration UI route `/admin/extraction` is available and linked from the `Administration` dropdown as `Extraction method`.
+- Extraction settings API endpoints are implemented:
+  - `GET /api/admin/extraction-settings`
+  - `PUT /api/admin/extraction-settings`
+  - `POST /api/admin/extraction-settings/test-local-ai`
+- App-wide extraction method selection is persisted in SQLite (`app_settings`) with supported methods:
+  - `none`
+  - `gpt-5-mini`
+  - `local-ai`
+- Upload metadata now snapshots immutable extraction method per upload via `invoice_uploads.extraction_method_used`.
+- Upload extraction status now supports `skipped` for method `none`.
+- Upload behavior by method is implemented:
+  - `none`: no external extraction call; immediate `skipped` status and manual-empty defaults in review.
+  - `gpt-5-mini`: existing async OpenAI extraction flow.
+  - `local-ai`: async extraction via LM Studio OpenAI-compatible endpoint using strict structured output validation.
+- Review API/UI now includes and displays extraction method used (`extractionMethodUsed`) alongside extraction status/error.
+- Local AI connection testing is implemented with deterministic step checks (`GET /models`, `POST /responses`) and detailed error reporting in admin UI.
+- Local manual extraction script is available:
+  - script: `scripts/test-local-ai-pdf-extraction.mjs`
+  - npm command: `npm run test:local-extraction`
 
 ## What remains
 - Implement next planned features:
-- Extraction method administration workflow (`014-extraction-method-administration`)
 - Annual P&L export/generation workflow
 
 ## How to run (dev/validation)
