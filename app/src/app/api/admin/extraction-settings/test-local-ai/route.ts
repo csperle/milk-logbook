@@ -3,7 +3,7 @@ import { getRuntimeExtractionSettings } from "@/lib/extraction-settings-repo";
 import {
   InvoiceExtractionError,
   testResponsesApiStructuredOutput,
-} from "@/lib/openai/invoice-extraction";
+} from "@/lib/extraction/invoice-extraction";
 
 export const runtime = "nodejs";
 

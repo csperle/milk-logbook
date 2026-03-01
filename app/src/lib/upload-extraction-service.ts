@@ -13,7 +13,7 @@ import {
   extractInvoiceDraftFromPdf,
   InvoiceExtractionError,
   runResponsesApiInvoiceExtraction,
-} from "@/lib/openai/invoice-extraction";
+} from "@/lib/extraction/invoice-extraction";
 
 const EXTRACTION_FAILURE_MESSAGES: Record<string, string> = {
   EXTRACTION_PROVIDER_ERROR: "Extraction provider request failed.",
