@@ -1,6 +1,6 @@
 # 013-ai-extraction-review-prefill
 
-- Status: Planned
+- Status: Implemented
 
 ## 1) Goal
 
