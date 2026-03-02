@@ -72,7 +72,7 @@ export function ExtractionSettingsAdminClient() {
   const [method, setMethod] = useState<ExtractionMethod>("gpt-5-mini");
   const [localAiBaseUrl, setLocalAiBaseUrl] = useState("http://127.0.0.1:1234/v1");
   const [localAiModel, setLocalAiModel] = useState("");
-  const [localAiTimeoutMs, setLocalAiTimeoutMs] = useState("30000");
+  const [localAiTimeoutSeconds, setLocalAiTimeoutSeconds] = useState("30");
   const [localAiApiKey, setLocalAiApiKey] = useState("");
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -83,9 +83,9 @@ export function ExtractionSettingsAdminClient() {
       return "Local AI base URL must be a valid HTTP/HTTPS URL.";
     }
 
-    const timeout = Number.parseInt(localAiTimeoutMs.trim(), 10);
-    if (!Number.isInteger(timeout) || timeout < 1 || timeout > 120_000) {
-      return "Local AI timeout must be between 1 and 120000 ms.";
+    const timeoutSeconds = Number.parseInt(localAiTimeoutSeconds.trim(), 10);
+    if (!Number.isInteger(timeoutSeconds) || timeoutSeconds < 1 || timeoutSeconds > 120) {
+      return "Local AI timeout must be between 1 and 120 seconds.";
     }
 
     if (isLocalAi && localAiModel.trim().length < 1) {
@@ -93,7 +93,7 @@ export function ExtractionSettingsAdminClient() {
     }
 
     return null;
-  }, [isLocalAi, localAiBaseUrl, localAiModel, localAiTimeoutMs]);
+  }, [isLocalAi, localAiBaseUrl, localAiModel, localAiTimeoutSeconds]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -114,7 +114,7 @@ export function ExtractionSettingsAdminClient() {
         setMethod(payload.extractionMethod);
         setLocalAiBaseUrl(payload.localAi.baseUrl);
         setLocalAiModel(payload.localAi.model);
-        setLocalAiTimeoutMs(String(payload.localAi.timeoutMs));
+        setLocalAiTimeoutSeconds(String(Math.max(1, Math.round(payload.localAi.timeoutMs / 1000))));
         setApiKeyConfigured(payload.localAi.apiKeyConfigured);
         setLocalAiApiKey("");
         setFeedback(null);
@@ -140,7 +140,8 @@ export function ExtractionSettingsAdminClient() {
       return;
     }
 
-    const timeoutMs = Number.parseInt(localAiTimeoutMs.trim(), 10);
+    const timeoutSeconds = Number.parseInt(localAiTimeoutSeconds.trim(), 10);
+    const timeoutMs = timeoutSeconds * 1000;
     setIsSaving(true);
     try {
       const response = await fetch("/api/admin/extraction-settings", {
@@ -165,7 +166,7 @@ export function ExtractionSettingsAdminClient() {
       setMethod(payload.extractionMethod);
       setLocalAiBaseUrl(payload.localAi.baseUrl);
       setLocalAiModel(payload.localAi.model);
-      setLocalAiTimeoutMs(String(payload.localAi.timeoutMs));
+      setLocalAiTimeoutSeconds(String(Math.max(1, Math.round(payload.localAi.timeoutMs / 1000))));
       setApiKeyConfigured(payload.localAi.apiKeyConfigured);
       setLocalAiApiKey("");
       setFeedback({ tone: "info", message: "Extraction settings saved." });
@@ -272,54 +273,56 @@ export function ExtractionSettingsAdminClient() {
             </label>
           </fieldset>
 
-          <div className="grid gap-3 rounded border border-zinc-200 bg-zinc-50 p-3">
-            <h2 className="text-sm font-medium text-zinc-900">Local AI Configuration</h2>
+          {isLocalAi ? (
+            <div className="grid gap-3 rounded border border-zinc-200 bg-zinc-50 p-3">
+              <h2 className="text-sm font-medium text-zinc-900">Local AI Configuration</h2>
 
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Base URL</span>
-              <input
-                type="url"
-                value={localAiBaseUrl}
-                onChange={(event) => setLocalAiBaseUrl(event.target.value)}
-                className="rounded border border-zinc-300 px-3 py-2"
-                placeholder="http://127.0.0.1:1234/v1"
-              />
-            </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">Base URL</span>
+                <input
+                  type="url"
+                  value={localAiBaseUrl}
+                  onChange={(event) => setLocalAiBaseUrl(event.target.value)}
+                  className="rounded border border-zinc-300 px-3 py-2"
+                  placeholder="http://127.0.0.1:1234/v1"
+                />
+              </label>
 
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Model</span>
-              <input
-                type="text"
-                value={localAiModel}
-                onChange={(event) => setLocalAiModel(event.target.value)}
-                className="rounded border border-zinc-300 px-3 py-2"
-                placeholder="qwen2.5-7b-instruct"
-              />
-            </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">Model</span>
+                <input
+                  type="text"
+                  value={localAiModel}
+                  onChange={(event) => setLocalAiModel(event.target.value)}
+                  className="rounded border border-zinc-300 px-3 py-2"
+                  placeholder="qwen2.5-7b-instruct"
+                />
+              </label>
 
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">Timeout (ms)</span>
-              <input
-                type="number"
-                min={1}
-                max={120000}
-                value={localAiTimeoutMs}
-                onChange={(event) => setLocalAiTimeoutMs(event.target.value)}
-                className="rounded border border-zinc-300 px-3 py-2"
-              />
-            </label>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">Timeout (seconds)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={120}
+                  value={localAiTimeoutSeconds}
+                  onChange={(event) => setLocalAiTimeoutSeconds(event.target.value)}
+                  className="rounded border border-zinc-300 px-3 py-2"
+                />
+              </label>
 
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium">API key (optional)</span>
-              <input
-                type="password"
-                value={localAiApiKey}
-                onChange={(event) => setLocalAiApiKey(event.target.value)}
-                className="rounded border border-zinc-300 px-3 py-2"
-                placeholder={apiKeyConfigured ? "Configured (enter new value to replace)" : "Not configured"}
-              />
-            </label>
-          </div>
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">API key (optional)</span>
+                <input
+                  type="password"
+                  value={localAiApiKey}
+                  onChange={(event) => setLocalAiApiKey(event.target.value)}
+                  className="rounded border border-zinc-300 px-3 py-2"
+                  placeholder={apiKeyConfigured ? "Configured (enter new value to replace)" : "Not configured"}
+                />
+              </label>
+            </div>
+          ) : null}
 
           {validationError ? (
             <p className="text-sm text-red-700">{validationError}</p>
