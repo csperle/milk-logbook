@@ -1,7 +1,7 @@
 import { getDb } from "@/lib/db";
 import type { UploadExtractionMethod } from "@/lib/invoice-uploads-repo";
 
-export const DEFAULT_LOCAL_AI_BASE_URL = "http://host.docker.internal:1234/v1";
+export const DEFAULT_LOCAL_AI_BASE_URL = "http://host.docker.internal:1234";
 export const DEFAULT_LOCAL_AI_TIMEOUT_MS = 30_000;
 
 type AppSettingsRow = {

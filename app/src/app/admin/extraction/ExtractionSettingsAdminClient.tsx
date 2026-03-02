@@ -23,8 +23,18 @@ type ApiError = {
 };
 
 type Feedback = {
-  tone: "info" | "error";
+  tone: "info" | "warning" | "error";
   message: string;
+};
+
+type LocalAiModelOption = {
+  id: string;
+  loaded: boolean;
+};
+
+type LocalAiModelsResponse = {
+  models: LocalAiModelOption[];
+  loadedModelId: string | null;
 };
 
 async function parseApiError(response: Response): Promise<string> {
@@ -70,11 +80,16 @@ export function ExtractionSettingsAdminClient() {
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [method, setMethod] = useState<ExtractionMethod>("gpt-5-mini");
-  const [localAiBaseUrl, setLocalAiBaseUrl] = useState("http://127.0.0.1:1234/v1");
+  const [localAiBaseUrl, setLocalAiBaseUrl] = useState("http://127.0.0.1:1234");
   const [localAiModel, setLocalAiModel] = useState("");
   const [localAiTimeoutSeconds, setLocalAiTimeoutSeconds] = useState("30");
   const [localAiApiKey, setLocalAiApiKey] = useState("");
   const [apiKeyConfigured, setApiKeyConfigured] = useState(false);
+  const [availableModels, setAvailableModels] = useState<LocalAiModelOption[]>([]);
+  const [loadedModelId, setLoadedModelId] = useState<string | null>(null);
+  const [hasFetchedModels, setHasFetchedModels] = useState(false);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [modelsFeedback, setModelsFeedback] = useState<Feedback | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   const isLocalAi = method === "local-ai";
@@ -94,6 +109,89 @@ export function ExtractionSettingsAdminClient() {
 
     return null;
   }, [isLocalAi, localAiBaseUrl, localAiModel, localAiTimeoutSeconds]);
+
+  function resetModelDiscoveryState() {
+    setAvailableModels([]);
+    setLoadedModelId(null);
+    setHasFetchedModels(false);
+    setModelsFeedback(null);
+  }
+
+  async function handleLoadModels() {
+    setModelsFeedback(null);
+
+    if (!isValidHttpUrl(localAiBaseUrl.trim())) {
+      setModelsFeedback({
+        tone: "error",
+        message: "Enter a valid Base URL first, then load models.",
+      });
+      return;
+    }
+
+    const timeoutSeconds = Number.parseInt(localAiTimeoutSeconds.trim(), 10);
+    if (!Number.isInteger(timeoutSeconds) || timeoutSeconds < 1 || timeoutSeconds > 120) {
+      setModelsFeedback({
+        tone: "error",
+        message: "Timeout must be between 1 and 120 seconds before loading models.",
+      });
+      return;
+    }
+
+    setIsLoadingModels(true);
+    try {
+      const response = await fetch("/api/admin/extraction-settings/local-ai-models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          localAi: {
+            baseUrl: localAiBaseUrl.trim(),
+            timeoutMs: timeoutSeconds * 1000,
+            apiKey: localAiApiKey.trim().length > 0 ? localAiApiKey.trim() : undefined,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        setModelsFeedback({ tone: "error", message: await parseApiError(response) });
+        setAvailableModels([]);
+        setLoadedModelId(null);
+        setHasFetchedModels(true);
+        return;
+      }
+
+      const payload = (await response.json()) as LocalAiModelsResponse;
+      setAvailableModels(payload.models);
+      setLoadedModelId(payload.loadedModelId);
+      setHasFetchedModels(true);
+
+      if (payload.models.length < 1) {
+        setModelsFeedback({
+          tone: "error",
+          message: "Connection succeeded, but no models were returned by /models.",
+        });
+        return;
+      }
+
+      if (localAiModel.trim().length < 1) {
+        const preferredModelId =
+          payload.loadedModelId && payload.models.some((model) => model.id === payload.loadedModelId)
+            ? payload.loadedModelId
+            : payload.models[0]?.id;
+        if (preferredModelId) {
+          setLocalAiModel(preferredModelId);
+        }
+      }
+
+      setModelsFeedback({
+        tone: "info",
+        message: `Loaded ${payload.models.length} model option${payload.models.length === 1 ? "" : "s"}.`,
+      });
+    } catch {
+      setModelsFeedback({ tone: "error", message: "Could not load models from local AI." });
+    } finally {
+      setIsLoadingModels(false);
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -116,6 +214,7 @@ export function ExtractionSettingsAdminClient() {
         setLocalAiModel(payload.localAi.model);
         setLocalAiTimeoutSeconds(String(Math.max(1, Math.round(payload.localAi.timeoutMs / 1000))));
         setApiKeyConfigured(payload.localAi.apiKeyConfigured);
+        resetModelDiscoveryState();
         setLocalAiApiKey("");
         setFeedback(null);
       } catch {
@@ -168,6 +267,7 @@ export function ExtractionSettingsAdminClient() {
       setLocalAiModel(payload.localAi.model);
       setLocalAiTimeoutSeconds(String(Math.max(1, Math.round(payload.localAi.timeoutMs / 1000))));
       setApiKeyConfigured(payload.localAi.apiKeyConfigured);
+      resetModelDiscoveryState();
       setLocalAiApiKey("");
       setFeedback({ tone: "info", message: "Extraction settings saved." });
     } catch {
@@ -194,11 +294,23 @@ export function ExtractionSettingsAdminClient() {
         return;
       }
 
-      const payload = (await response.json()) as { latencyMs: number };
-      setFeedback({
-        tone: "info",
-        message: `Local AI connection test passed (${payload.latencyMs} ms).`,
-      });
+      const payload = (await response.json()) as {
+        latencyMs: number;
+        expectedReplyMatched?: boolean;
+        actualReply?: string;
+      };
+      if (payload.expectedReplyMatched === false) {
+        const actualReply = typeof payload.actualReply === "string" ? payload.actualReply : "";
+        setFeedback({
+          tone: "warning",
+          message: `Connection to the AI model has been established. But instead of "Okay" the answer was: ${actualReply || "<empty>"}. (${payload.latencyMs} ms)`,
+        });
+      } else {
+        setFeedback({
+          tone: "info",
+          message: `Local AI connection test passed (${payload.latencyMs} ms).`,
+        });
+      }
     } catch {
       setFeedback({ tone: "error", message: "Could not test local AI connection." });
     } finally {
@@ -231,7 +343,9 @@ export function ExtractionSettingsAdminClient() {
             className={`whitespace-pre-wrap rounded px-3 py-2 text-sm ${
               feedback.tone === "error"
                 ? "border border-red-300 bg-red-50 text-red-700"
-                : "border border-zinc-300 bg-white text-zinc-700"
+                : feedback.tone === "warning"
+                  ? "border border-amber-300 bg-amber-50 text-amber-800"
+                  : "border border-zinc-300 bg-white text-zinc-700"
             }`}
           >
             {feedback.message}
@@ -282,20 +396,12 @@ export function ExtractionSettingsAdminClient() {
                 <input
                   type="url"
                   value={localAiBaseUrl}
-                  onChange={(event) => setLocalAiBaseUrl(event.target.value)}
+                  onChange={(event) => {
+                    setLocalAiBaseUrl(event.target.value);
+                    resetModelDiscoveryState();
+                  }}
                   className="rounded border border-zinc-300 px-3 py-2"
-                  placeholder="http://127.0.0.1:1234/v1"
-                />
-              </label>
-
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium">Model</span>
-                <input
-                  type="text"
-                  value={localAiModel}
-                  onChange={(event) => setLocalAiModel(event.target.value)}
-                  className="rounded border border-zinc-300 px-3 py-2"
-                  placeholder="qwen2.5-7b-instruct"
+                  placeholder="http://127.0.0.1:1234"
                 />
               </label>
 
@@ -306,21 +412,100 @@ export function ExtractionSettingsAdminClient() {
                   min={1}
                   max={120}
                   value={localAiTimeoutSeconds}
-                  onChange={(event) => setLocalAiTimeoutSeconds(event.target.value)}
+                  onChange={(event) => {
+                    setLocalAiTimeoutSeconds(event.target.value);
+                    resetModelDiscoveryState();
+                  }}
                   className="rounded border border-zinc-300 px-3 py-2"
                 />
               </label>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleLoadModels();
+                  }}
+                  disabled={isLoadingModels}
+                  className="rounded border border-zinc-300 px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isLoadingModels ? "Loading models..." : "Load available models"}
+                </button>
+                <p className="text-xs text-zinc-600">
+                  Enter a valid Base URL, then load models from LM Studio `/api/v1/models`.
+                </p>
+              </div>
+
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="font-medium">Model</span>
+                {availableModels.length > 0 ? (
+                  <select
+                    value={localAiModel}
+                    onChange={(event) => setLocalAiModel(event.target.value)}
+                    className="rounded border border-zinc-300 px-3 py-2"
+                  >
+                    <option value="" disabled>
+                      Select a model
+                    </option>
+                    {availableModels.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.loaded ? `${model.id} (loaded)` : model.id}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={localAiModel}
+                    onChange={(event) => setLocalAiModel(event.target.value)}
+                    className="rounded border border-zinc-300 px-3 py-2"
+                    placeholder="Load models first, or enter model id manually"
+                  />
+                )}
+              </label>
+
+              {loadedModelId ? (
+                <p className="text-xs text-zinc-600">Currently loaded in LM Studio: {loadedModelId}</p>
+              ) : hasFetchedModels && availableModels.length > 0 ? (
+                <p className="text-xs text-zinc-600">
+                  No explicit loaded model reported by LM Studio. You can still choose from the list.
+                </p>
+              ) : null}
+
+              {hasFetchedModels &&
+              availableModels.length > 0 &&
+              localAiModel.trim().length > 0 &&
+              !availableModels.some((model) => model.id === localAiModel.trim()) ? (
+                <p className="text-xs text-amber-700">
+                  Selected model is not in the latest discovered list. Reload models or adjust the value.
+                </p>
+              ) : null}
 
               <label className="flex flex-col gap-1 text-sm">
                 <span className="font-medium">API key (optional)</span>
                 <input
                   type="password"
                   value={localAiApiKey}
-                  onChange={(event) => setLocalAiApiKey(event.target.value)}
+                  onChange={(event) => {
+                    setLocalAiApiKey(event.target.value);
+                    resetModelDiscoveryState();
+                  }}
                   className="rounded border border-zinc-300 px-3 py-2"
                   placeholder={apiKeyConfigured ? "Configured (enter new value to replace)" : "Not configured"}
                 />
               </label>
+
+              {modelsFeedback ? (
+                <p
+                  className={`whitespace-pre-wrap rounded px-3 py-2 text-sm ${
+                    modelsFeedback.tone === "error"
+                      ? "border border-red-300 bg-red-50 text-red-700"
+                      : "border border-zinc-300 bg-white text-zinc-700"
+                  }`}
+                >
+                  {modelsFeedback.message}
+                </p>
+              ) : null}
             </div>
           ) : null}
 

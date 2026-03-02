@@ -10,10 +10,12 @@ import {
   createUploadReviewDraftFromExtractionIfMissing,
 } from "@/lib/upload-review-repo";
 import {
-  extractInvoiceDraftFromPdf,
   InvoiceExtractionError,
+} from "@/lib/extraction/invoice-extraction-core";
+import {
+  extractInvoiceDraftFromPdf,
   runResponsesApiInvoiceExtraction,
-} from "@/lib/extraction/invoice-extraction";
+} from "@/lib/extraction/openai-extraction-provider";
 
 const EXTRACTION_FAILURE_MESSAGES: Record<string, string> = {
   EXTRACTION_PROVIDER_ERROR: "Extraction provider request failed.",

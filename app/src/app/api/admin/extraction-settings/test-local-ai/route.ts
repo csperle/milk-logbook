@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRuntimeExtractionSettings } from "@/lib/extraction-settings-repo";
-import {
-  InvoiceExtractionError,
-  testResponsesApiStructuredOutput,
-} from "@/lib/extraction/invoice-extraction";
+import { InvoiceExtractionError } from "@/lib/extraction/invoice-extraction-core";
+import { testLmStudioApiHealth } from "@/lib/extraction/lmstudio-extraction-provider";
 
 export const runtime = "nodejs";
 
@@ -100,7 +98,7 @@ export async function POST() {
       );
     }
 
-    const testResult = await testResponsesApiStructuredOutput({
+    const testResult = await testLmStudioApiHealth({
       apiBaseUrl: settings.localAi.baseUrl,
       apiKey: settings.localAi.apiKey?.trim() ? settings.localAi.apiKey.trim() : null,
       model: settings.localAi.model,
@@ -111,7 +109,9 @@ export async function POST() {
       {
         ok: true,
         providerReachable: true,
-        structuredOutputOk: true,
+        structuredOutputOk: testResult.expectedReplyMatched,
+        expectedReplyMatched: testResult.expectedReplyMatched,
+        actualReply: testResult.actualReply,
         latencyMs: testResult.latencyMs,
       },
       { status: 200 },
