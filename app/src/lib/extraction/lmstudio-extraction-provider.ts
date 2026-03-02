@@ -55,15 +55,15 @@ function extractChatText(payload: unknown): string {
   }
 
   const output = Array.isArray(record.output) ? record.output : [];
-  for (const item of output) {
+  const messageItems = output.filter((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
-      continue;
+      return false;
     }
-    const itemRecord = item as Record<string, unknown>;
-    if (itemRecord.type !== "message" && itemRecord.type !== "reasoning") {
-      continue;
-    }
+    return (item as Record<string, unknown>).type === "message";
+  });
 
+  for (const item of messageItems) {
+    const itemRecord = item as Record<string, unknown>;
     if (typeof itemRecord.content === "string" && itemRecord.content.trim().length > 0) {
       return itemRecord.content.trim();
     }
@@ -260,7 +260,6 @@ export async function testLmStudioApiHealth(input: {
         ].join(" "),
         input: "Return only the single word: Okay",
         temperature: 0,
-        max_output_tokens: 6,
       }),
       signal: controller.signal,
     });

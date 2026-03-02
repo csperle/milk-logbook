@@ -4,6 +4,8 @@ import { listLocalAiModels } from "@/lib/extraction/lmstudio-extraction-provider
 
 export const runtime = "nodejs";
 
+const CONNECTION_TEST_TIMEOUT_MS = 30_000;
+
 type ModelsErrorCode =
   | "INVALID_JSON"
   | "LOCAL_AI_CONFIG_INVALID"
@@ -15,7 +17,6 @@ type ModelsErrorCode =
 type ModelsRequestPayload = {
   localAi?: {
     baseUrl?: string;
-    timeoutMs?: number;
     apiKey?: string | null;
   };
 };
@@ -48,7 +49,7 @@ function isValidHttpUrl(value: string): boolean {
 }
 
 function parsePayload(payload: unknown):
-  | { ok: true; baseUrl: string; timeoutMs: number; apiKey: string | null }
+  | { ok: true; baseUrl: string; apiKey: string | null }
   | { ok: false; message: string } {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return { ok: false, message: "Request body must be a JSON object." };
@@ -60,20 +61,15 @@ function parsePayload(payload: unknown):
   }
 
   const baseUrl = typeof record.localAi.baseUrl === "string" ? record.localAi.baseUrl.trim() : "";
-  const timeoutMs = record.localAi.timeoutMs;
   const apiKey = typeof record.localAi.apiKey === "string" ? record.localAi.apiKey.trim() : null;
 
   if (!isValidHttpUrl(baseUrl)) {
     return { ok: false, message: "localAi.baseUrl must be a valid HTTP/HTTPS URL." };
   }
-  if (!Number.isInteger(timeoutMs) || (timeoutMs as number) < 1 || (timeoutMs as number) > 120_000) {
-    return { ok: false, message: "localAi.timeoutMs must be an integer between 1 and 120000." };
-  }
 
   return {
     ok: true,
     baseUrl,
-    timeoutMs: timeoutMs as number,
     apiKey: apiKey && apiKey.length > 0 ? apiKey : null,
   };
 }
@@ -89,7 +85,7 @@ function mapFailure(error: unknown): {
       return {
         status: 504,
         code: "EXTRACTION_TIMEOUT",
-        message: error.message,
+        message: "API connection test timed out after 30 seconds.",
         details: error.details,
       };
     }
@@ -112,7 +108,7 @@ function mapFailure(error: unknown): {
   return {
     status: 500,
     code: "EXTRACTION_TEST_FAILED",
-    message: error instanceof Error ? error.message : "Could not load local AI models.",
+    message: error instanceof Error ? error.message : "Could not test local AI API connection.",
   };
 }
 
@@ -132,7 +128,7 @@ export async function POST(request: Request) {
   try {
     const modelsResult = await listLocalAiModels({
       apiBaseUrl: parsed.baseUrl,
-      timeoutMs: parsed.timeoutMs,
+      timeoutMs: CONNECTION_TEST_TIMEOUT_MS,
       apiKey: parsed.apiKey,
     });
 

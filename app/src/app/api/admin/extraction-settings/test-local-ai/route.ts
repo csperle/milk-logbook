@@ -1,16 +1,26 @@
 import { NextResponse } from "next/server";
-import { getRuntimeExtractionSettings } from "@/lib/extraction-settings-repo";
 import { InvoiceExtractionError } from "@/lib/extraction/invoice-extraction-core";
 import { testLmStudioApiHealth } from "@/lib/extraction/lmstudio-extraction-provider";
 
 export const runtime = "nodejs";
 
 type TestErrorCode =
+  | "INVALID_JSON"
+  | "LOCAL_AI_CONFIG_INVALID"
   | "EXTRACTION_CONFIG_MISSING"
   | "EXTRACTION_PROVIDER_ERROR"
   | "EXTRACTION_TIMEOUT"
   | "EXTRACTION_INVALID_OUTPUT"
   | "EXTRACTION_TEST_FAILED";
+
+type TestRequestPayload = {
+  localAi?: {
+    baseUrl?: string;
+    model?: string;
+    timeoutMs?: number;
+    apiKey?: string | null;
+  };
+};
 
 function errorResponse(
   status: number,
@@ -28,6 +38,78 @@ function errorResponse(
     },
     { status },
   );
+}
+
+function isValidHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function parsePayload(payload: unknown):
+  | { ok: true; baseUrl: string; model: string; timeoutMs: number; apiKey: string | null }
+  | { ok: false; code: TestErrorCode; message: string } {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return {
+      ok: false,
+      code: "LOCAL_AI_CONFIG_INVALID",
+      message: "Request body must be a JSON object.",
+    };
+  }
+
+  const record = payload as TestRequestPayload;
+  if (!record.localAi || typeof record.localAi !== "object" || Array.isArray(record.localAi)) {
+    return {
+      ok: false,
+      code: "LOCAL_AI_CONFIG_INVALID",
+      message: "localAi must be an object.",
+    };
+  }
+
+  const baseUrl = typeof record.localAi.baseUrl === "string" ? record.localAi.baseUrl.trim() : "";
+  const model = typeof record.localAi.model === "string" ? record.localAi.model.trim() : "";
+  const timeoutMs = record.localAi.timeoutMs;
+  const apiKeyRaw = record.localAi.apiKey;
+
+  if (!isValidHttpUrl(baseUrl)) {
+    return {
+      ok: false,
+      code: "LOCAL_AI_CONFIG_INVALID",
+      message: "localAi.baseUrl must be a valid HTTP/HTTPS URL.",
+    };
+  }
+  if (model.length < 1) {
+    return {
+      ok: false,
+      code: "EXTRACTION_CONFIG_MISSING",
+      message: "localAi.model is required.",
+    };
+  }
+  if (!Number.isInteger(timeoutMs) || (timeoutMs as number) < 1 || (timeoutMs as number) > 120_000) {
+    return {
+      ok: false,
+      code: "LOCAL_AI_CONFIG_INVALID",
+      message: "localAi.timeoutMs must be an integer between 1 and 120000.",
+    };
+  }
+  if (apiKeyRaw !== undefined && apiKeyRaw !== null && typeof apiKeyRaw !== "string") {
+    return {
+      ok: false,
+      code: "LOCAL_AI_CONFIG_INVALID",
+      message: "localAi.apiKey must be a string, null, or omitted.",
+    };
+  }
+
+  return {
+    ok: true,
+    baseUrl,
+    model,
+    timeoutMs: timeoutMs as number,
+    apiKey: typeof apiKeyRaw === "string" && apiKeyRaw.trim().length > 0 ? apiKeyRaw.trim() : null,
+  };
 }
 
 function mapFailure(error: unknown): {
@@ -79,30 +161,25 @@ function mapFailure(error: unknown): {
   };
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  let payload: unknown;
   try {
-    const settings = getRuntimeExtractionSettings();
-    if (settings.extractionMethod !== "local-ai") {
-      return errorResponse(
-        400,
-        "EXTRACTION_CONFIG_MISSING",
-        "Set extraction method to local-ai before running this test.",
-      );
-    }
+    payload = await request.json();
+  } catch {
+    return errorResponse(400, "INVALID_JSON", "Request body must be valid JSON.");
+  }
 
-    if (settings.localAi.baseUrl.trim().length < 1 || settings.localAi.model.trim().length < 1) {
-      return errorResponse(
-        400,
-        "EXTRACTION_CONFIG_MISSING",
-        "Local AI base URL and model are required.",
-      );
-    }
+  const parsed = parsePayload(payload);
+  if (!parsed.ok) {
+    return errorResponse(400, parsed.code, parsed.message);
+  }
 
+  try {
     const testResult = await testLmStudioApiHealth({
-      apiBaseUrl: settings.localAi.baseUrl,
-      apiKey: settings.localAi.apiKey?.trim() ? settings.localAi.apiKey.trim() : null,
-      model: settings.localAi.model,
-      timeoutMs: settings.localAi.timeoutMs,
+      apiBaseUrl: parsed.baseUrl,
+      apiKey: parsed.apiKey,
+      model: parsed.model,
+      timeoutMs: parsed.timeoutMs,
     });
 
     return NextResponse.json(
