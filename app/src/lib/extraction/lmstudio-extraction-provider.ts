@@ -1,7 +1,11 @@
 import {
+  buildInvoiceExtractionPrompt,
   DEFAULT_TIMEOUT_MS,
   InvoiceExtractionError,
+  parseExtractedInvoiceDraftFromResponsesJson,
+  type ExtractedInvoiceDraft,
 } from "@/lib/extraction/invoice-extraction-core";
+import type { UploadEntryType } from "@/lib/invoice-uploads-repo";
 
 export type LocalAiModelOption = {
   id: string;
@@ -347,6 +351,113 @@ export async function testLmStudioApiHealth(input: {
         step: "provider-reachability-or-chat-health",
         modelsUrl,
         chatUrl,
+      },
+    );
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
+
+export async function extractInvoiceDraftFromTextViaLmStudioChat(input: {
+  apiBaseUrl: string;
+  apiKey: string | null;
+  model: string;
+  timeoutMs: number;
+  entryType: UploadEntryType;
+  documentText: string;
+}): Promise<ExtractedInvoiceDraft> {
+  const effectiveTimeoutMs =
+    Number.isFinite(input.timeoutMs) && input.timeoutMs > 0 ? input.timeoutMs : DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), effectiveTimeoutMs);
+  const chatUrl = joinLmStudioApiV1Path(input.apiBaseUrl, "/chat");
+
+  const promptText = buildInvoiceExtractionPrompt(input.entryType);
+  const textPayload = input.documentText.trim().slice(0, 120_000);
+  if (textPayload.length < 1) {
+    throw new InvoiceExtractionError(
+      "EXTRACTION_INVALID_OUTPUT",
+      "PDF text extraction returned no usable text.",
+    );
+  }
+
+  try {
+    const response = await fetch(chatUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model: input.model,
+        system_prompt: promptText,
+        input: [
+          "Extract the bookkeeping fields from this invoice text and return only JSON.",
+          "",
+          "--- BEGIN INVOICE TEXT ---",
+          textPayload,
+          "--- END INVOICE TEXT ---",
+        ].join("\n"),
+        temperature: 0,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const bodySnippet = await readResponseBodySnippet(response);
+      throw new InvoiceExtractionError(
+        "EXTRACTION_PROVIDER_ERROR",
+        `Local AI chat extraction returned ${response.status}.`,
+        {
+          step: "chat-extraction",
+          url: chatUrl,
+          httpStatus: response.status,
+          responseBodySnippet: bodySnippet,
+        },
+      );
+    }
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new InvoiceExtractionError(
+        "EXTRACTION_INVALID_OUTPUT",
+        "Local AI chat extraction response was not valid JSON.",
+      );
+    }
+
+    const messageText = extractChatText(payload);
+    if (messageText.trim().length < 1) {
+      throw new InvoiceExtractionError(
+        "EXTRACTION_INVALID_OUTPUT",
+        "Local AI chat extraction response did not include message content.",
+      );
+    }
+
+    return parseExtractedInvoiceDraftFromResponsesJson({
+      responseJson: { output_text: messageText },
+      entryType: input.entryType,
+    });
+  } catch (error) {
+    if (error instanceof InvoiceExtractionError) {
+      throw error;
+    }
+
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new InvoiceExtractionError("EXTRACTION_TIMEOUT", "Local AI chat extraction timed out.", {
+        step: "chat-extraction",
+        url: chatUrl,
+        timeoutMs: effectiveTimeoutMs,
+      });
+    }
+
+    throw new InvoiceExtractionError(
+      "EXTRACTION_PROVIDER_ERROR",
+      `Local AI chat extraction failed before response: ${error instanceof Error ? error.message : "unknown error"}.`,
+      {
+        step: "chat-extraction",
+        url: chatUrl,
       },
     );
   } finally {

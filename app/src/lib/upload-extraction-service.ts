@@ -14,8 +14,9 @@ import {
 } from "@/lib/extraction/invoice-extraction-core";
 import {
   extractInvoiceDraftFromPdf,
-  runResponsesApiInvoiceExtraction,
 } from "@/lib/extraction/openai-extraction-provider";
+import { extractTextFromPdfBuffer } from "@/lib/extraction/pdf-text-extractor";
+import { extractInvoiceDraftFromTextViaLmStudioChat } from "@/lib/extraction/lmstudio-extraction-provider";
 
 const EXTRACTION_FAILURE_MESSAGES: Record<string, string> = {
   EXTRACTION_PROVIDER_ERROR: "Extraction provider request failed.",
@@ -29,7 +30,7 @@ function mapErrorToFailure(error: unknown): { code: string; message: string } {
   if (error instanceof InvoiceExtractionError) {
     return {
       code: error.code,
-      message: EXTRACTION_FAILURE_MESSAGES[error.code] ?? error.message,
+      message: error.message,
     };
   }
 
@@ -50,14 +51,22 @@ async function extractWithLocalAi(upload: InvoiceUpload) {
     );
   }
 
-  return runResponsesApiInvoiceExtraction({
+  const pdfBuffer = await fs.readFile(path.join(process.cwd(), upload.storedPath));
+  if (pdfBuffer.length < 5 || pdfBuffer.subarray(0, 5).toString("utf-8") !== "%PDF-") {
+    throw new InvoiceExtractionError(
+      "EXTRACTION_INVALID_OUTPUT",
+      "Stored upload file is not a valid PDF.",
+    );
+  }
+
+  const extractedText = await extractTextFromPdfBuffer(pdfBuffer);
+  return extractInvoiceDraftFromTextViaLmStudioChat({
     apiBaseUrl: baseUrl,
     apiKey: settings.localAi.apiKey?.trim() ? settings.localAi.apiKey.trim() : null,
     model,
     timeoutMs: settings.localAi.timeoutMs,
-    filename: upload.storedFilename,
-    pdfBase64: (await fs.readFile(path.join(process.cwd(), upload.storedPath))).toString("base64"),
     entryType: upload.entryType,
+    documentText: extractedText,
   });
 }
 

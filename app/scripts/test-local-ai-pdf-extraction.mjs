@@ -2,8 +2,9 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { PDFParse } from "pdf-parse";
 
-const DEFAULT_BASE_URL = "http://host.docker.internal:1234/v1";
+const DEFAULT_BASE_URL = "http://host.docker.internal:1234";
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_MODEL = "local-model";
 
@@ -14,7 +15,7 @@ function printUsage() {
       "  node scripts/test-local-ai-pdf-extraction.mjs --file <absolute-or-relative-pdf-path> --entry-type <income|expense> --model <model> [--base-url <url>] [--api-key <key>] [--timeout-ms <number>]",
       "",
       "Environment variable fallbacks:",
-      "  --base-url: LOCAL_AI_BASE_URL (default http://127.0.0.1:1234/v1)",
+      "  --base-url: LOCAL_AI_BASE_URL (default http://127.0.0.1:1234)",
       "  --model: LOCAL_AI_MODEL (required if --model is omitted)",
       "  --api-key: LOCAL_AI_API_KEY (optional)",
       "",
@@ -89,10 +90,12 @@ function parseArgs(argv) {
   return args;
 }
 
-function joinBaseUrlAndPath(baseUrl, pathName) {
-  const normalizedBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+function joinLmStudioApiV1Path(baseUrl, pathName) {
+  const trimmed = baseUrl.trim().replace(/\/+$/, "");
+  const withoutKnownSuffix = trimmed.replace(/\/api\/v1$/i, "").replace(/\/v1$/i, "");
+  const apiBase = `${withoutKnownSuffix}/api/v1`;
   const normalizedPath = pathName.startsWith("/") ? pathName : `/${pathName}`;
-  return `${normalizedBase}${normalizedPath}`;
+  return `${apiBase}${normalizedPath}`;
 }
 
 function isValidHttpUrl(value) {
@@ -126,32 +129,11 @@ function buildPrompt(entryType) {
   ].join("\n");
 }
 
-function getSchema() {
-  return {
-    type: "object",
-    additionalProperties: false,
-    properties: {
-      documentDate: { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-      counterpartyName: { type: ["string", "null"] },
-      bookingText: { type: ["string", "null"] },
-      amountGross: { type: "integer", minimum: 0 },
-      amountNet: { type: ["integer", "null"], minimum: 0 },
-      amountTax: { type: ["integer", "null"], minimum: 0 },
-      paymentReceivedDate: { type: ["string", "null"], pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-    },
-    required: [
-      "documentDate",
-      "counterpartyName",
-      "bookingText",
-      "amountGross",
-      "amountNet",
-      "amountTax",
-      "paymentReceivedDate",
-    ],
-  };
-}
+function extractChatMessageText(responseJson) {
+  if (!responseJson || typeof responseJson !== "object" || Array.isArray(responseJson)) {
+    return null;
+  }
 
-function tryExtractJsonText(responseJson) {
   if (typeof responseJson.output_text === "string" && responseJson.output_text.trim().length > 0) {
     return responseJson.output_text;
   }
@@ -161,18 +143,35 @@ function tryExtractJsonText(responseJson) {
   }
 
   for (const item of responseJson.output) {
-    if (!item || !Array.isArray(item.content)) {
+    if (!item || typeof item !== "object" || Array.isArray(item) || item.type !== "message") {
       continue;
     }
 
+    if (typeof item.content === "string" && item.content.trim().length > 0) {
+      return item.content;
+    }
+
+    if (!Array.isArray(item.content)) {
+      continue;
+    }
+
+    const textParts = [];
     for (const content of item.content) {
-      if (!content || typeof content !== "object") {
+      if (!content || typeof content !== "object" || Array.isArray(content)) {
         continue;
       }
-
-      if (content.type === "output_text" && typeof content.text === "string") {
-        return content.text;
+      if ((content.type === "text" || content.type === "output_text") && typeof content.text === "string") {
+        const trimmed = content.text.trim();
+        if (trimmed.length > 0) {
+          textParts.push(trimmed);
+        }
+      } else if (typeof content.content === "string" && content.content.trim().length > 0) {
+        textParts.push(content.content.trim());
       }
+    }
+
+    if (textParts.length > 0) {
+      return textParts.join(" ");
     }
   }
 
@@ -263,6 +262,25 @@ async function readResponseDebug(response) {
   };
 }
 
+function normalizeExtractedText(input) {
+  return input
+    .replace(/\u0000/g, "")
+    .replace(/[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, " ")
+    .replace(/[^\S\r\n]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function extractTextFromPdfBuffer(fileBuffer) {
+  const parser = new PDFParse({ data: fileBuffer });
+  try {
+    const result = await parser.getText();
+    return normalizeExtractedText(result.text).slice(0, 200_000);
+  } finally {
+    await parser.destroy();
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
@@ -285,7 +303,7 @@ async function main() {
 
   const baseUrl = args.baseUrl.trim();
   if (!isValidHttpUrl(baseUrl)) {
-    throw new Error("Invalid --base-url. Use a valid http(s) URL, e.g. http://127.0.0.1:1234/v1");
+    throw new Error("Invalid --base-url. Use a valid http(s) URL, e.g. http://127.0.0.1:1234");
   }
 
   const pdfPath = path.resolve(args.file);
@@ -295,12 +313,17 @@ async function main() {
     throw new Error(`File is not a valid PDF signature: ${pdfPath}`);
   }
 
+  const extractedText = await extractTextFromPdfBuffer(fileBuffer);
+  if (extractedText.length < 1) {
+    throw new Error("Could not extract usable text from PDF.");
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), args.timeoutMs);
   const startTime = Date.now();
 
-  const modelsUrl = joinBaseUrlAndPath(baseUrl, "/models");
-  const responsesUrl = joinBaseUrlAndPath(baseUrl, "/responses");
+  const modelsUrl = joinLmStudioApiV1Path(baseUrl, "/models");
+  const chatUrl = joinLmStudioApiV1Path(baseUrl, "/chat");
   const headers = {
     "Content-Type": "application/json",
     ...(args.apiKey.trim().length > 0 ? { Authorization: `Bearer ${args.apiKey.trim()}` } : {}),
@@ -327,38 +350,23 @@ async function main() {
     return;
   }
 
-  console.log(`Step 2/2: Running PDF extraction via ${responsesUrl}`);
+  console.log(`Step 2/2: Running text-based extraction via ${chatUrl}`);
   const requestBody = {
     model: effectiveModel,
+    system_prompt: buildPrompt(args.entryType),
     input: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "input_file",
-            filename: path.basename(pdfPath),
-            file_data: `data:application/pdf;base64,${fileBuffer.toString("base64")}`,
-          },
-          {
-            type: "input_text",
-            text: buildPrompt(args.entryType),
-          },
-        ],
-      },
-    ],
-    text: {
-      format: {
-        type: "json_schema",
-        name: "invoice_extraction",
-        strict: true,
-        schema: getSchema(),
-      },
-    },
+      "Extract the bookkeeping fields from this invoice text and return only JSON.",
+      "",
+      "--- BEGIN INVOICE TEXT ---",
+      extractedText.slice(0, 120_000),
+      "--- END INVOICE TEXT ---",
+    ].join("\n"),
+    temperature: 0,
   };
 
   let response;
   try {
-    response = await fetch(responsesUrl, {
+    response = await fetch(chatUrl, {
       method: "POST",
       headers,
       body: JSON.stringify(requestBody),
@@ -367,7 +375,7 @@ async function main() {
   } catch (error) {
     clearTimeout(timeout);
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Timeout after ${args.timeoutMs}ms while calling ${responsesUrl}`);
+      throw new Error(`Timeout after ${args.timeoutMs}ms while calling ${chatUrl}`);
     }
     throw error;
   } finally {
@@ -383,7 +391,7 @@ async function main() {
   }
 
   const responseJson = await response.json();
-  const jsonText = tryExtractJsonText(responseJson);
+  const jsonText = extractChatMessageText(responseJson);
   if (!jsonText) {
     console.error("Could not find JSON output in extraction response.");
     console.error(JSON.stringify(responseJson, null, 2));
@@ -410,9 +418,10 @@ async function main() {
       {
         provider: "local-ai",
         baseUrl,
-        model: responseJson.model ?? effectiveModel,
-        responseId: responseJson.id ?? null,
-        usage: responseJson.usage ?? null,
+        model: responseJson.model ?? responseJson.model_instance_id ?? effectiveModel,
+        responseId: responseJson.id ?? responseJson.response_id ?? null,
+        usage: responseJson.usage ?? responseJson.stats ?? null,
+        extractedTextLength: extractedText.length,
         latencyMs: Date.now() - startTime,
       },
       null,
