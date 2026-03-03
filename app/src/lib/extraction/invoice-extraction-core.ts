@@ -30,10 +30,30 @@ export type ExtractedInvoiceDraft = {
 export const DEFAULT_TIMEOUT_MS = 30_000;
 
 export function buildInvoiceExtractionPrompt(entryType: UploadEntryType): string {
+  const requiredKeys = [
+    "documentDate",
+    "counterpartyName",
+    "bookingText",
+    "amountGross",
+    "amountNet",
+    "amountTax",
+    "paymentReceivedDate",
+  ].join(", ");
+
   return [
     "You extract bookkeeping fields from a single invoice PDF.",
     "",
-    "Return ONLY JSON matching the provided schema.",
+    "Return ONLY one JSON object. No markdown. No prose. No code fences.",
+    "",
+    "IMPORTANT OUTPUT CONTRACT:",
+    `- Output EXACTLY these keys and no others: ${requiredKeys}.`,
+    "- Use these exact key names. Do not rename keys.",
+    "- If invoice uses other labels, map them to the required keys:",
+    "  - date | invoiceDate -> documentDate",
+    "  - description | lineItemDescription -> bookingText",
+    "  - total | gross | amountTotal -> amountGross",
+    "  - subtotal | net | amountExclTax -> amountNet",
+    "  - vat | tax | mwst -> amountTax",
     "",
     "Rules:",
     "- Do not guess. If a field is missing or unclear, return null.",
@@ -46,6 +66,18 @@ export function buildInvoiceExtractionPrompt(entryType: UploadEntryType): string
     "- paymentReceivedDate is only for income documents; otherwise return null.",
     "- 'Christoph Sperle' is NEVER the counterpartyName because it is the name of the invoice recipient.",
     "- Never output markdown or extra keys.",
+    "",
+    "Field guidance:",
+    "- documentDate: invoice/bill document date, not due date and not service period end date.",
+    "- counterpartyName: seller/issuer company name (invoice sender).",
+    "- bookingText: short booking description of goods/services (invoice subject).",
+    "- amountGross: total amount including tax, in cents (integer).",
+    "- amountNet: amount excluding tax, in cents (integer) or null.",
+    "- amountTax: tax amount, in cents (integer) or null.",
+    "- paymentReceivedDate: only for income entryType when explicitly known; otherwise null.",
+    "",
+    "Example valid output:",
+    '{"documentDate":"2025-04-01","counterpartyName":"wint.global GmbH","bookingText":"Domain renewal sperle.ch + privacy service","amountGross":2034,"amountNet":1709,"amountTax":325,"paymentReceivedDate":null}',
     "",
     `Document entryType context: ${entryType}.`,
   ].join("\n");
@@ -180,6 +212,24 @@ function normalizeAmount(value: unknown, required: boolean): number | null {
   return value as number;
 }
 
+function pickAliasValue(
+  record: Record<string, unknown>,
+  canonicalKey: string,
+  aliases: string[],
+): unknown {
+  if (canonicalKey in record) {
+    return record[canonicalKey];
+  }
+
+  for (const alias of aliases) {
+    if (alias in record) {
+      return record[alias];
+    }
+  }
+
+  return undefined;
+}
+
 function normalizePayload(payload: unknown, entryType: UploadEntryType): ExtractedInvoiceDraft {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new InvoiceExtractionError(
@@ -189,16 +239,61 @@ function normalizePayload(payload: unknown, entryType: UploadEntryType): Extract
   }
 
   const record = payload as Record<string, unknown>;
-  const amountGross = normalizeAmount(record.amountGross, true);
-  const paymentReceivedDate = normalizeDate(record.paymentReceivedDate);
+  const amountGross = normalizeAmount(
+    pickAliasValue(record, "amountGross", [
+      "gross",
+      "total",
+      "totalAmount",
+      "amountTotal",
+      "amount_total",
+      "grossAmount",
+    ]),
+    true,
+  );
+  const paymentReceivedDate = normalizeDate(
+    pickAliasValue(record, "paymentReceivedDate", [
+      "paymentDate",
+      "receivedDate",
+      "payment_received_date",
+    ]),
+  );
 
   return {
-    documentDate: normalizeDate(record.documentDate),
-    counterpartyName: normalizeText(record.counterpartyName, 200),
-    bookingText: normalizeText(record.bookingText, 500),
+    documentDate: normalizeDate(
+      pickAliasValue(record, "documentDate", ["date", "invoiceDate", "invoice_date"]),
+    ),
+    counterpartyName: normalizeText(
+      pickAliasValue(record, "counterpartyName", [
+        "vendorName",
+        "supplierName",
+        "issuerName",
+      ]),
+      200,
+    ),
+    bookingText: normalizeText(
+      pickAliasValue(record, "bookingText", [
+        "description",
+        "lineItemDescription",
+        "lineDescription",
+        "purpose",
+      ]),
+      500,
+    ),
     amountGross: amountGross as number,
-    amountNet: normalizeAmount(record.amountNet, false),
-    amountTax: normalizeAmount(record.amountTax, false),
+    amountNet: normalizeAmount(
+      pickAliasValue(record, "amountNet", [
+        "net",
+        "subtotal",
+        "netAmount",
+        "amountExclTax",
+        "amount_excl_tax",
+      ]),
+      false,
+    ),
+    amountTax: normalizeAmount(
+      pickAliasValue(record, "amountTax", ["tax", "vat", "taxAmount", "mwst"]),
+      false,
+    ),
     paymentReceivedDate: entryType === "income" ? paymentReceivedDate : null,
   };
 }

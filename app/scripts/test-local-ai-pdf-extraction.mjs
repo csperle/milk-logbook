@@ -5,22 +5,21 @@ import path from "node:path";
 import { PDFParse } from "pdf-parse";
 
 const DEFAULT_BASE_URL = "http://host.docker.internal:1234";
-const DEFAULT_TIMEOUT_MS = 60_000;
-const DEFAULT_MODEL = "local-model";
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 function printUsage() {
   console.log(
     [
       "Usage:",
-      "  node scripts/test-local-ai-pdf-extraction.mjs --file <absolute-or-relative-pdf-path> --entry-type <income|expense> --model <model> [--base-url <url>] [--api-key <key>] [--timeout-ms <number>]",
+      "  node scripts/test-local-ai-pdf-extraction.mjs --file <absolute-or-relative-pdf-path> --entry-type <income|expense> [--base-url <url>] [--api-key <key>] [--timeout-ms <number>] [--model <optional-override>]",
       "",
       "Environment variable fallbacks:",
-      "  --base-url: LOCAL_AI_BASE_URL (default http://127.0.0.1:1234)",
-      "  --model: LOCAL_AI_MODEL (required if --model is omitted)",
+      "  --base-url: LOCAL_AI_BASE_URL (default http://host.docker.internal:1234)",
+      "  --model: LOCAL_AI_MODEL (optional override; default behavior auto-uses loaded LM Studio model)",
       "  --api-key: LOCAL_AI_API_KEY (optional)",
       "",
       "Example:",
-      "  node scripts/test-local-ai-pdf-extraction.mjs --file ./sample.pdf --entry-type expense --model qwen2.5-7b-instruct",
+      "  node scripts/test-local-ai-pdf-extraction.mjs --file ./sample.pdf --entry-type expense",
     ].join("\n"),
   );
 }
@@ -98,6 +97,64 @@ function joinLmStudioApiV1Path(baseUrl, pathName) {
   return `${apiBase}${normalizedPath}`;
 }
 
+function isModelLoaded(modelRecord) {
+  if (Array.isArray(modelRecord.loaded_instances) && modelRecord.loaded_instances.length > 0) {
+    return true;
+  }
+
+  if (modelRecord.loaded === true || modelRecord.is_loaded === true) {
+    return true;
+  }
+
+  const state = typeof modelRecord.state === "string" ? modelRecord.state.toLowerCase() : "";
+  const status = typeof modelRecord.status === "string" ? modelRecord.status.toLowerCase() : "";
+  return state.includes("loaded") || status.includes("loaded") || status.includes("active");
+}
+
+function resolveLoadedModelFromModelsPayload(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const modelsRaw = Array.isArray(payload.models)
+    ? payload.models
+    : Array.isArray(payload.data)
+      ? payload.data
+      : null;
+  if (!modelsRaw) {
+    return null;
+  }
+
+  for (const rawModel of modelsRaw) {
+    if (!rawModel || typeof rawModel !== "object" || Array.isArray(rawModel)) {
+      continue;
+    }
+
+    const modelType = typeof rawModel.type === "string" ? rawModel.type.trim().toLowerCase() : "";
+    if (modelType === "embedding" || modelType === "embeddings") {
+      continue;
+    }
+
+    const loaded = isModelLoaded(rawModel);
+    if (!loaded) {
+      continue;
+    }
+
+    const idCandidate =
+      typeof rawModel.key === "string"
+        ? rawModel.key
+        : typeof rawModel.id === "string"
+          ? rawModel.id
+          : "";
+    const id = idCandidate.trim();
+    if (id.length > 0) {
+      return id;
+    }
+  }
+
+  return null;
+}
+
 function isValidHttpUrl(value) {
   try {
     const parsed = new URL(value);
@@ -108,10 +165,30 @@ function isValidHttpUrl(value) {
 }
 
 function buildPrompt(entryType) {
+  const requiredKeys = [
+    "documentDate",
+    "counterpartyName",
+    "bookingText",
+    "amountGross",
+    "amountNet",
+    "amountTax",
+    "paymentReceivedDate",
+  ].join(", ");
+
   return [
     "You extract bookkeeping fields from a single invoice PDF.",
     "",
-    "Return ONLY JSON matching the provided schema.",
+    "Return ONLY one JSON object. No markdown. No prose. No code fences.",
+    "",
+    "IMPORTANT OUTPUT CONTRACT:",
+    `- Output EXACTLY these keys and no others: ${requiredKeys}.`,
+    "- Use these exact key names. Do not rename keys.",
+    "- If invoice uses other labels, map them to the required keys:",
+    "  - date | invoiceDate -> documentDate",
+    "  - description | lineItemDescription -> bookingText",
+    "  - total | gross | amountTotal -> amountGross",
+    "  - subtotal | net | amountExclTax -> amountNet",
+    "  - vat | tax | mwst -> amountTax",
     "",
     "Rules:",
     "- Do not guess. If a field is missing or unclear, return null.",
@@ -124,6 +201,18 @@ function buildPrompt(entryType) {
     "- paymentReceivedDate is only for income documents; otherwise return null.",
     "- 'Christoph Sperle' is NEVER the counterpartyName because it is the name of the invoice recipient.",
     "- Never output markdown or extra keys.",
+    "",
+    "Field guidance:",
+    "- documentDate: invoice/bill document date, not due date and not service period end date.",
+    "- counterpartyName: seller/issuer company name (invoice sender).",
+    "- bookingText: short booking description of goods/services (invoice subject).",
+    "- amountGross: total amount including tax, in cents (integer).",
+    "- amountNet: amount excluding tax, in cents (integer) or null.",
+    "- amountTax: tax amount, in cents (integer) or null.",
+    "- paymentReceivedDate: only for income entryType when explicitly known; otherwise null.",
+    "",
+    "Example valid output:",
+    '{"documentDate":"2025-04-01","counterpartyName":"wint.global GmbH","bookingText":"Domain renewal sperle.ch + privacy service","amountGross":2034,"amountNet":1709,"amountTax":325,"paymentReceivedDate":null}',
     "",
     `Document entryType context: ${entryType}.`,
   ].join("\n");
@@ -187,6 +276,63 @@ function isDateOnly(value) {
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
+function pickAliasValue(record, canonicalKey, aliases) {
+  if (canonicalKey in record) {
+    return record[canonicalKey];
+  }
+
+  for (const alias of aliases) {
+    if (alias in record) {
+      return record[alias];
+    }
+  }
+
+  return undefined;
+}
+
+function normalizePayloadWithAliases(payload) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const record = payload;
+  return {
+    documentDate: pickAliasValue(record, "documentDate", ["date", "invoiceDate", "invoice_date"]),
+    counterpartyName: pickAliasValue(record, "counterpartyName", [
+      "vendorName",
+      "supplierName",
+      "issuerName",
+    ]),
+    bookingText: pickAliasValue(record, "bookingText", [
+      "description",
+      "lineItemDescription",
+      "lineDescription",
+      "purpose",
+    ]),
+    amountGross: pickAliasValue(record, "amountGross", [
+      "gross",
+      "total",
+      "totalAmount",
+      "amountTotal",
+      "amount_total",
+      "grossAmount",
+    ]),
+    amountNet: pickAliasValue(record, "amountNet", [
+      "net",
+      "subtotal",
+      "netAmount",
+      "amountExclTax",
+      "amount_excl_tax",
+    ]),
+    amountTax: pickAliasValue(record, "amountTax", ["tax", "vat", "taxAmount", "mwst"]),
+    paymentReceivedDate: pickAliasValue(record, "paymentReceivedDate", [
+      "paymentDate",
+      "receivedDate",
+      "payment_received_date",
+    ]),
+  };
+}
+
 function validateExtractionPayload(payload) {
   const errors = [];
   const requiredKeys = [
@@ -202,44 +348,58 @@ function validateExtractionPayload(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return ["response is not a JSON object"];
   }
-
-  const keys = Object.keys(payload);
-  const unknownKeys = keys.filter((key) => !requiredKeys.includes(key));
-  if (unknownKeys.length > 0) {
-    errors.push(`unknown keys found: ${unknownKeys.join(", ")}`);
+  const normalized = normalizePayloadWithAliases(payload);
+  if (!normalized) {
+    return ["response is not a JSON object"];
   }
 
   for (const key of requiredKeys) {
-    if (!(key in payload)) {
+    if (!(key in normalized)) {
       errors.push(`missing required key: ${key}`);
     }
   }
 
-  if (payload.documentDate !== null && !isDateOnly(payload.documentDate)) {
+  if (normalized.documentDate !== null && normalized.documentDate !== undefined && !isDateOnly(normalized.documentDate)) {
     errors.push("documentDate must be null or strict YYYY-MM-DD");
   }
 
-  if (payload.counterpartyName !== null && typeof payload.counterpartyName !== "string") {
+  if (
+    normalized.counterpartyName !== null &&
+    normalized.counterpartyName !== undefined &&
+    typeof normalized.counterpartyName !== "string"
+  ) {
     errors.push("counterpartyName must be string or null");
   }
 
-  if (payload.bookingText !== null && typeof payload.bookingText !== "string") {
+  if (normalized.bookingText !== null && normalized.bookingText !== undefined && typeof normalized.bookingText !== "string") {
     errors.push("bookingText must be string or null");
   }
 
-  if (!Number.isInteger(payload.amountGross) || payload.amountGross < 0) {
+  if (!Number.isInteger(normalized.amountGross) || normalized.amountGross < 0) {
     errors.push("amountGross must be a non-negative integer");
   }
 
-  if (payload.amountNet !== null && (!Number.isInteger(payload.amountNet) || payload.amountNet < 0)) {
+  if (
+    normalized.amountNet !== null &&
+    normalized.amountNet !== undefined &&
+    (!Number.isInteger(normalized.amountNet) || normalized.amountNet < 0)
+  ) {
     errors.push("amountNet must be null or a non-negative integer");
   }
 
-  if (payload.amountTax !== null && (!Number.isInteger(payload.amountTax) || payload.amountTax < 0)) {
+  if (
+    normalized.amountTax !== null &&
+    normalized.amountTax !== undefined &&
+    (!Number.isInteger(normalized.amountTax) || normalized.amountTax < 0)
+  ) {
     errors.push("amountTax must be null or a non-negative integer");
   }
 
-  if (payload.paymentReceivedDate !== null && !isDateOnly(payload.paymentReceivedDate)) {
+  if (
+    normalized.paymentReceivedDate !== null &&
+    normalized.paymentReceivedDate !== undefined &&
+    !isDateOnly(normalized.paymentReceivedDate)
+  ) {
     errors.push("paymentReceivedDate must be null or strict YYYY-MM-DD");
   }
 
@@ -296,11 +456,6 @@ async function main() {
     throw new Error("Missing or invalid --entry-type. Use income or expense.");
   }
 
-  const effectiveModel = args.model.trim().length > 0 ? args.model.trim() : DEFAULT_MODEL;
-  if (!effectiveModel || effectiveModel === DEFAULT_MODEL) {
-    throw new Error("Missing model. Set --model or LOCAL_AI_MODEL.");
-  }
-
   const baseUrl = args.baseUrl.trim();
   if (!isValidHttpUrl(baseUrl)) {
     throw new Error("Invalid --base-url. Use a valid http(s) URL, e.g. http://127.0.0.1:1234");
@@ -350,6 +505,24 @@ async function main() {
     return;
   }
 
+  let modelsPayload;
+  try {
+    modelsPayload = await modelsResponse.json();
+  } catch {
+    clearTimeout(timeout);
+    throw new Error("Model list response is not valid JSON.");
+  }
+
+  const loadedModel = resolveLoadedModelFromModelsPayload(modelsPayload);
+  const modelOverride = args.model.trim();
+  const effectiveModel = modelOverride.length > 0 ? modelOverride : loadedModel;
+  if (!effectiveModel) {
+    clearTimeout(timeout);
+    throw new Error(
+      "No loaded LM Studio model detected. Load a chat model in LM Studio first, or pass --model as an override.",
+    );
+  }
+
   console.log(`Step 2/2: Running text-based extraction via ${chatUrl}`);
   const requestBody = {
     model: effectiveModel,
@@ -364,7 +537,26 @@ async function main() {
     temperature: 0,
   };
 
+  const authHeader = args.apiKey.trim().length > 0 ? "Bearer [REDACTED]" : null;
+  console.log("POST request payload:");
+  console.log(
+    JSON.stringify(
+      {
+        method: "POST",
+        url: chatUrl,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: authHeader,
+        },
+        body: requestBody,
+      },
+      null,
+      2,
+    ),
+  );
+
   let response;
+  const aiRequestStartedAt = Date.now();
   try {
     response = await fetch(chatUrl, {
       method: "POST",
@@ -391,6 +583,7 @@ async function main() {
   }
 
   const responseJson = await response.json();
+  const aiResponseTimeMs = Date.now() - aiRequestStartedAt;
   const jsonText = extractChatMessageText(responseJson);
   if (!jsonText) {
     console.error("Could not find JSON output in extraction response.");
@@ -410,7 +603,11 @@ async function main() {
     return;
   }
 
+  const normalizedPayload = normalizePayloadWithAliases(payload);
   const validationErrors = validateExtractionPayload(payload);
+
+  console.log(`AI response time: ${aiResponseTimeMs}ms`);
+  console.log("");
 
   console.log("Extraction metadata:");
   console.log(
@@ -418,6 +615,7 @@ async function main() {
       {
         provider: "local-ai",
         baseUrl,
+        modelSelection: modelOverride.length > 0 ? "cli-override" : "loaded-model-auto",
         model: responseJson.model ?? responseJson.model_instance_id ?? effectiveModel,
         responseId: responseJson.id ?? responseJson.response_id ?? null,
         usage: responseJson.usage ?? responseJson.stats ?? null,
@@ -429,8 +627,8 @@ async function main() {
     ),
   );
   console.log("");
-  console.log("Extracted fields:");
-  console.log(JSON.stringify(payload, null, 2));
+  console.log("Extracted fields (normalized):");
+  console.log(JSON.stringify(normalizedPayload, null, 2));
 
   if (validationErrors.length > 0) {
     console.log("");
