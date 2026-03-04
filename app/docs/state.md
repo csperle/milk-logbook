@@ -1,9 +1,9 @@
 # Project State
 
-- Last updated date: 2026-03-01
+- Last updated date: 2026-03-04
 - Current goal: implement annual P&L export/generation workflow.
 - Active feature spec(s):
-  - `014-extraction-method-administration` (implemented)
+  - `015-annual-pl-statutory-export-switzerland` (draft; simplified Einzelunternehmen scope)
 
 ## What is implemented
 - Company context guard slice (`002-company-context-guard`) is implemented.
@@ -226,7 +226,11 @@
 
 ## What remains
 - Implement next planned features:
-- Annual P&L export/generation workflow
+- `015-annual-pl-statutory-export-switzerland`:
+  - add minimal annual P&L PDF export for `Einzelunternehmen`
+  - keep 8-row simplified structure/order from `010` section `5.2`
+  - include prior-year comparative column
+  - persist export snapshots and downloads
 
 ## How to run (dev/validation)
 - Dev server: `npm run dev`
