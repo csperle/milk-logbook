@@ -18,6 +18,8 @@ type ReviewResponse = {
     uploadedAt: string;
     extractionStatus: "pending" | "succeeded" | "failed" | "skipped";
     extractionMethodUsed: "none" | "gpt-5-mini" | "local-ai";
+    extractionModelLabel: string | null;
+    extractionDurationMs: number | null;
     extractionError: {
       code: string;
       message: string;
@@ -195,6 +197,31 @@ function getExtractionStatusLabel(status: ReviewResponse["upload"]["extractionSt
     return "Extraction disabled";
   }
   return "Extraction failed";
+}
+
+function getExtractionMethodLabel(upload: ReviewResponse["upload"]): string {
+  if (upload.extractionMethodUsed === "local-ai") {
+    if (upload.extractionModelLabel && upload.extractionModelLabel.trim().length > 0) {
+      return `Local AI (LM Studio), model: ${upload.extractionModelLabel}`;
+    }
+    return "Local AI (LM Studio)";
+  }
+
+  if (upload.extractionMethodUsed === "gpt-5-mini") {
+    return "OpenAI gpt-5-mini";
+  }
+
+  return "None (manual review only)";
+}
+
+function formatDurationMs(durationMs: number): string {
+  const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes > 0) {
+    return `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+  }
+  return `${seconds}s`;
 }
 
 export function UploadReviewPageClient({
@@ -583,7 +610,7 @@ export function UploadReviewPageClient({
           </p>
           <p>
             <span className="font-medium">Extraction method:</span>{" "}
-            {reviewData.upload.extractionMethodUsed}
+            {getExtractionMethodLabel(reviewData.upload)}
           </p>
           <p>
             <span className="font-medium">Extraction:</span>{" "}
@@ -616,6 +643,12 @@ export function UploadReviewPageClient({
             <p className="text-xs text-red-700">
               {reviewData.upload.extractionError.message} (
               {reviewData.upload.extractionError.code})
+            </p>
+          ) : null}
+          {reviewData.upload.extractionStatus === "succeeded" &&
+          typeof reviewData.upload.extractionDurationMs === "number" ? (
+            <p className="text-xs text-emerald-700">
+              Extraction duration: {formatDurationMs(reviewData.upload.extractionDurationMs)}
             </p>
           ) : null}
         </section>

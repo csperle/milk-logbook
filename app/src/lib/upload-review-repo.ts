@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { getRuntimeExtractionSettings } from "@/lib/extraction-settings-repo";
 import {
   getInvoiceUploadByIdAndCompanyId,
   type UploadEntryType,
@@ -15,6 +16,8 @@ export type UploadReviewUpload = {
   uploadedAt: string;
   extractionStatus: UploadExtractionStatus;
   extractionMethodUsed: UploadExtractionMethod;
+  extractionModelLabel: string | null;
+  extractionDurationMs: number | null;
   extractionError: UploadExtractionError | null;
 };
 
@@ -82,8 +85,25 @@ function toUploadReviewUpload(upload: {
   uploadedAt: string;
   extractionStatus: UploadExtractionStatus;
   extractionMethodUsed: UploadExtractionMethod;
+  extractedAt: string | null;
   extractionError: UploadExtractionError | null;
 }): UploadReviewUpload {
+  const runtimeSettings =
+    upload.extractionMethodUsed === "local-ai" ? getRuntimeExtractionSettings() : null;
+  const configuredLocalAiModel =
+    runtimeSettings && runtimeSettings.extractionMethod === "local-ai"
+      ? runtimeSettings.localAi.model.trim()
+      : "";
+
+  const uploadedAtMs = Date.parse(upload.uploadedAt);
+  const extractedAtMs = upload.extractedAt ? Date.parse(upload.extractedAt) : Number.NaN;
+  const extractionDurationMs =
+    Number.isFinite(uploadedAtMs) &&
+    Number.isFinite(extractedAtMs) &&
+    extractedAtMs >= uploadedAtMs
+      ? extractedAtMs - uploadedAtMs
+      : null;
+
   return {
     id: upload.id,
     companyId: upload.companyId,
@@ -92,6 +112,11 @@ function toUploadReviewUpload(upload: {
     uploadedAt: upload.uploadedAt,
     extractionStatus: upload.extractionStatus,
     extractionMethodUsed: upload.extractionMethodUsed,
+    extractionModelLabel:
+      upload.extractionMethodUsed === "local-ai" && configuredLocalAiModel.length > 0
+        ? configuredLocalAiModel
+        : null,
+    extractionDurationMs,
     extractionError: upload.extractionError,
   };
 }

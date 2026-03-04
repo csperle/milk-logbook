@@ -12,6 +12,10 @@ export type LocalAiModelOption = {
   loaded: boolean;
 };
 
+function normalizeModelId(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 function joinLmStudioApiV1Path(baseUrl: string, pathName: string): string {
   const trimmed = baseUrl.trim().replace(/\/+$/, "");
   const withoutKnownSuffix = trimmed.replace(/\/api\/v1$/i, "").replace(/\/v1$/i, "");
@@ -212,6 +216,57 @@ export async function listLocalAiModels(input: {
 
   const models = Array.from(modelsById.values()).sort((a, b) => a.id.localeCompare(b.id));
   return { models, loadedModelId };
+}
+
+export async function ensureLocalAiModelReady(input: {
+  apiBaseUrl: string;
+  apiKey: string | null;
+  timeoutMs: number;
+  configuredModel: string;
+}): Promise<void> {
+  const model = input.configuredModel.trim();
+  if (model.length < 1) {
+    throw new InvoiceExtractionError(
+      "EXTRACTION_CONFIG_MISSING",
+      "Local AI model is not configured.",
+    );
+  }
+
+  let modelListResult: { models: LocalAiModelOption[] };
+  try {
+    modelListResult = await listLocalAiModels({
+      apiBaseUrl: input.apiBaseUrl,
+      apiKey: input.apiKey,
+      timeoutMs: input.timeoutMs,
+    });
+  } catch (error) {
+    if (error instanceof InvoiceExtractionError && error.code === "EXTRACTION_PROVIDER_ERROR") {
+      throw new InvoiceExtractionError(
+        "EXTRACTION_PROVIDER_ERROR",
+        "Could not connect to Local AI (LM Studio). Start LM Studio and enable the Local Server, then try again.",
+      );
+    }
+    throw error;
+  }
+
+  const configuredModelNormalized = normalizeModelId(model);
+  const configuredModelEntry = modelListResult.models.find(
+    (item) => normalizeModelId(item.id) === configuredModelNormalized,
+  );
+
+  if (!configuredModelEntry) {
+    throw new InvoiceExtractionError(
+      "EXTRACTION_PROVIDER_ERROR",
+      `Configured Local AI model \"${model}\" is not available via /api/v1/models. Load that model in LM Studio or update the configured model.`,
+    );
+  }
+
+  if (!configuredModelEntry.loaded) {
+    throw new InvoiceExtractionError(
+      "EXTRACTION_PROVIDER_ERROR",
+      `Configured Local AI model \"${model}\" is available but not loaded. Load the model in LM Studio and retry.`,
+    );
+  }
 }
 
 export async function testLmStudioApiHealth(input: {

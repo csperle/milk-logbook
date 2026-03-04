@@ -16,7 +16,10 @@ import {
   extractInvoiceDraftFromPdf,
 } from "@/lib/extraction/openai-extraction-provider";
 import { extractTextFromPdfBuffer } from "@/lib/extraction/pdf-text-extractor";
-import { extractInvoiceDraftFromTextViaLmStudioChat } from "@/lib/extraction/lmstudio-extraction-provider";
+import {
+  ensureLocalAiModelReady,
+  extractInvoiceDraftFromTextViaLmStudioChat,
+} from "@/lib/extraction/lmstudio-extraction-provider";
 
 const EXTRACTION_FAILURE_MESSAGES: Record<string, string> = {
   EXTRACTION_PROVIDER_ERROR: "Extraction provider request failed.",
@@ -50,6 +53,14 @@ async function extractWithLocalAi(upload: InvoiceUpload) {
       "Local AI extraction configuration is missing.",
     );
   }
+  const apiKey = settings.localAi.apiKey?.trim() ? settings.localAi.apiKey.trim() : null;
+
+  await ensureLocalAiModelReady({
+    apiBaseUrl: baseUrl,
+    apiKey,
+    timeoutMs: settings.localAi.timeoutMs,
+    configuredModel: model,
+  });
 
   const pdfBuffer = await fs.readFile(path.join(process.cwd(), upload.storedPath));
   if (pdfBuffer.length < 5 || pdfBuffer.subarray(0, 5).toString("utf-8") !== "%PDF-") {
@@ -62,7 +73,7 @@ async function extractWithLocalAi(upload: InvoiceUpload) {
   const extractedText = await extractTextFromPdfBuffer(pdfBuffer);
   return extractInvoiceDraftFromTextViaLmStudioChat({
     apiBaseUrl: baseUrl,
-    apiKey: settings.localAi.apiKey?.trim() ? settings.localAi.apiKey.trim() : null,
+    apiKey,
     model,
     timeoutMs: settings.localAi.timeoutMs,
     entryType: upload.entryType,
