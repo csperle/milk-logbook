@@ -38,7 +38,7 @@ Reference links:
 - Show expense details by `expense type` grouped under their mapped P&L category section.
 - Show current year and prior year values side-by-side.
 - Use CHF formatting and deterministic calculation rules.
-- Generate export on demand (fire-and-forget).
+- Generate export on demand synchronously (request waits for PDF response).
 
 ### Out
 
@@ -70,9 +70,9 @@ The statement keeps the canonical summary order below as section totals:
 Rules:
 
 - No reordering.
-- Category total rows (`Direct Costs`, `Operating Expenses`, `Financial / Other`, `Taxes`) are shown only when the category has at least one included expense-type subtotal `> 0`.
+- Category total rows (`Direct Costs`, `Operating Expenses`, `Financial / Other`, `Taxes`) are shown only when at least one included expense-type subtotal is `> 0` in either selected year or prior year.
 - Summary lines (`Gross Profit`, `Operating Result`, `Net Profit / Loss`) are always shown.
-- Zero lines may be hidden in UI summary view, but exported PDF must show all 8 rows.
+- Zero-only category sections are hidden in the PDF export.
 - Expense detail rows are shown by expense type under their mapped category section in the PDF.
 
 ## 6) Data mapping (minimal, aligned with spec 011)
@@ -118,7 +118,27 @@ Computation policy:
 - Export values must be generated from the same summary computation model as `/reports/annual-pl`.
 - Export dataset source is canonical summary data only:
   - export ignores `view` and `mode` URL query parameters,
-  - export always uses the fixed 8-row summary model with current year and prior year columns.
+  - export always uses the canonical simplified summary model with current year and prior year columns and the same category-visibility rules as UI.
+
+### PDF label canon (German, deterministic)
+
+- Title: `Jahres-Erfolgsrechnung`.
+- Subtitle scope label: `Management report (Milchbüchleinrechnung)`.
+- Column headers:
+  - left: `Position`
+  - middle: selected year as `YYYY`
+  - right: prior year as `Vorjahr (YYYY)`
+- Top-level row labels:
+  - `Revenue` -> `Umsatz`
+  - `Direct Costs` -> `Direkte Kosten`
+  - `Gross Profit` -> `Bruttogewinn`
+  - `Operating Expenses` -> `Betriebsaufwand`
+  - `Operating Result` -> `Betriebsergebnis`
+  - `Financial / Other` -> `Finanz-/übriger Aufwand`
+  - `Taxes` -> `Steuern`
+  - `Net Profit / Loss` -> `Jahresgewinn / Jahresverlust`
+- Unassigned expense-type label: `Nicht zugewiesen`.
+- Footer note text: `Vereinfachter Management-Report (Milchbüchleinrechnung), kein gesetzlich vorgeschriebener Abschluss.`
 
 ### PDF visual design requirements (mandatory)
 
@@ -168,7 +188,7 @@ The export must be presentation-quality and not look like a raw/plain table.
 - Spacing and page layout:
   - A4 portrait layout.
   - generous but compact margins suitable for print and digital.
-  - keep the full 8-row statement together on one page in normal cases.
+  - keep the full simplified statement (all rendered top-level and detail rows) together on one page in normal cases.
   - avoid orphan header/row artifacts.
 - Footer:
   - include a small neutral footer note clarifying simplified-report scope (non-statutory labeling).
@@ -178,7 +198,15 @@ The export must be presentation-quality and not look like a raw/plain table.
 - Format: PDF only.
 - Filename: `annual-pl-{companySlug}-{year}-simple-{generatedAtUtc}.pdf`.
 - Filename rules (deterministic):
-  - `companySlug`: lowercase ASCII slug from company name using `[a-z0-9-]` only; trim leading/trailing `-`; collapse repeated `-`; fallback `company` when empty after normalization.
+  - `companySlug`: lowercase ASCII slug from company name using `[a-z0-9-]` only.
+    - normalization pipeline:
+      - trim input;
+      - transliterate `ä->ae`, `ö->oe`, `ü->ue`, `Ä->ae`, `Ö->oe`, `Ü->ue`, `ß->ss`;
+      - apply Unicode NFKD normalization and remove remaining combining marks (diacritics);
+      - replace any non `[a-z0-9]` run with `-`;
+      - collapse repeated `-`;
+      - trim leading/trailing `-`;
+      - fallback to `company` when empty after normalization.
   - `generatedAtUtc`: UTC timestamp in `YYYYMMDDTHHmmssZ` format (example: `20260304T184512Z`).
 - No export persistence:
   - no DB table,
@@ -192,14 +220,18 @@ The export must be presentation-quality and not look like a raw/plain table.
 
 - `/reports/annual-pl`:
   - `Export annual P&L (PDF)` action.
+  - export request is synchronous; action is disabled while request is in-flight.
+  - show a spinner/loading indicator only when export request duration exceeds 2 seconds.
   - fixed scope badge text:
     - `Management report (Milchbüchleinrechnung)`
 
 ### API
 
 - `POST /api/reports/annual-pl/export`
-  - request: `{ year }`
+  - request: JSON body `{ "year": number }` where `year` must be an integer in `1900..9999`.
+  - non-integer values (including numeric strings) are rejected with `INVALID_EXPORT_YEAR`.
   - response: `200` PDF stream with download `Content-Disposition`.
+  - deterministic error payload shape matches project convention: `{ "error": { "code": string, "message": string } }`.
 
 Deterministic errors:
 
@@ -216,6 +248,7 @@ Deterministic errors:
   - include as `Unassigned` expense-type row under `Operating Expenses`.
 - Category with no positive expense-type subtotal:
   - hide the category subtotal row and its detail rows.
+  - exact predicate is `(currentYearSubtotal > 0) OR (priorYearSubtotal > 0)` across included expense types.
 - Year outside deterministic bounds (non-4-digit or invalid):
   - reject with `INVALID_EXPORT_YEAR`.
 - Year validation bounds:
@@ -225,13 +258,14 @@ Deterministic errors:
 
 ## 11) Acceptance criteria
 
-- [ ] Annual P&L keeps the canonical 8-row order from `010` §5.2 as top-level section totals.
-- [ ] Export PDF includes current and prior-year amounts for all top-level rows and expense-type detail rows.
+- [ ] Annual P&L keeps the canonical 8-row order from `010` §5.2 for top-level rows that are rendered.
+- [ ] Export PDF includes current and prior-year amounts for all rendered top-level rows and expense-type detail rows.
 - [ ] Expense values are presented by expense type (not only aggregated by category) and grouped under their mapped category section.
 - [ ] Category rows are rendered as subtotals of their included expense-type rows.
 - [ ] A category subtotal row is shown only when at least one included expense-type subtotal is `> 0`; otherwise that category section is hidden.
 - [ ] Export is generated deterministically from the canonical summary computation model (independent of UI `view`/`mode`).
 - [ ] Export is generated on demand and returned directly without DB persistence.
+- [ ] Export request is synchronous; UI shows loading spinner only when request time exceeds 2 seconds.
 - [ ] PDF output follows the mandatory visual design requirements (hierarchy, typography, alignment, separators, emphasis, and print-safe styling).
 - [ ] Net Profit / Loss formula is aligned with `011` (`Operating Result - Financial / Other - Taxes`).
 - [ ] Export clearly indicates simplified-record scope (`Milchbüchleinrechnung`) and avoids statutory-label ambiguity.
