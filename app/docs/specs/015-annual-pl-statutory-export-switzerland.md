@@ -37,7 +37,7 @@ Reference links:
 - Use fixed simplified row order from `010` §5.2.
 - Show current year and prior year values side-by-side.
 - Use CHF formatting and deterministic calculation rules.
-- Persist export snapshots for traceability.
+- Generate export on demand (fire-and-forget).
 
 ### Out
 
@@ -106,6 +106,58 @@ Computation policy:
   - export ignores `view` and `mode` URL query parameters,
   - export always uses the fixed 8-row summary model with current year and prior year columns.
 
+### PDF visual design requirements (mandatory)
+
+The export must be presentation-quality and not look like a raw/plain table.
+
+- Visual hierarchy:
+  - report title at top with strong visual weight.
+  - subtitle/context row directly below title:
+    - company name,
+    - fiscal year,
+    - comparative year (`Vorjahr`),
+    - scope label `Management report (Milchbüchleinrechnung)`.
+  - generation timestamp in smaller, de-emphasized text.
+- Typography:
+  - use a clean, professional sans-serif font.
+  - title: semibold/bold.
+  - column headers: semibold.
+  - body rows: regular.
+  - subtotal/total rows (`Gross Profit`, `Operating Result`, `Net Profit / Loss`): semibold.
+  - avoid decorative or script fonts.
+- Table composition:
+  - fixed 3-column layout:
+    - left: row label,
+    - middle: selected year amount,
+    - right: prior year amount.
+  - labels are left-aligned.
+  - amount columns are right-aligned with tabular-number style where available.
+  - maintain consistent row height and padding.
+- Indentation and grouping:
+  - base rows (`Revenue`, `Direct Costs`, `Operating Expenses`, `Financial / Other`, `Taxes`) on base indent.
+  - computed rows (`Gross Profit`, `Operating Result`, `Net Profit / Loss`) visually distinguished via stronger weight and separator lines, not deeper indentation.
+- Lines and separators:
+  - header row has top and bottom rule.
+  - subtle horizontal rules between regular rows.
+  - stronger separator before each computed row.
+  - final `Net Profit / Loss` row has strongest emphasis (weight + rule treatment).
+  - avoid vertical grid lines unless needed for readability.
+- Color and contrast:
+  - monochrome/print-safe palette (black/charcoal/gray).
+  - do not rely on color alone for semantic meaning.
+  - maintain high contrast for printed readability.
+- Numeric presentation:
+  - always render values as `CHF` with Swiss formatting (`CHF 12'345.67`).
+  - show negative values with a deterministic style (`-CHF 1'234.00`).
+  - all numbers in amount columns align on the right edge.
+- Spacing and page layout:
+  - A4 portrait layout.
+  - generous but compact margins suitable for print and digital.
+  - keep the full 8-row statement together on one page in normal cases.
+  - avoid orphan header/row artifacts.
+- Footer:
+  - include a small neutral footer note clarifying simplified-report scope (non-statutory labeling).
+
 ## 8) Export requirements
 
 - Format: PDF only.
@@ -113,15 +165,11 @@ Computation policy:
 - Filename rules (deterministic):
   - `companySlug`: lowercase ASCII slug from company name using `[a-z0-9-]` only; trim leading/trailing `-`; collapse repeated `-`; fallback `company` when empty after normalization.
   - `generatedAtUtc`: UTC timestamp in `YYYYMMDDTHHmmssZ` format (example: `20260304T184512Z`).
-- Export metadata persisted in `annual_pl_exports`:
-  - `id`, `company_id`, `fiscal_year`, `format`, `currency`, `generated_at`, `file_path`, `checksum_sha256`.
-- Traceability snapshot persistence:
-  - persist export payload JSON in DB (suggested column: `snapshot_json` TEXT) containing:
-    - `rowOrder` (the 8 canonical labels),
-    - `currentYear` and `priorYear`,
-    - per-row rappen values for both years,
-    - rendered currency (`CHF`).
-  - `checksum_sha256` must be computed over the generated PDF file bytes.
+- No export persistence:
+  - no DB table,
+  - no snapshot JSON storage,
+  - no checksum storage.
+- Export is generated and streamed immediately from canonical summary data.
 
 ## 9) API/UI changes
 
@@ -129,7 +177,6 @@ Computation policy:
 
 - `/reports/annual-pl`:
   - `Export annual P&L (PDF)` action.
-  - optional export history list with download links.
   - fixed scope badge text:
     - `Management report (Milchbüchleinrechnung)`
 
@@ -137,26 +184,12 @@ Computation policy:
 
 - `POST /api/reports/annual-pl/export`
   - request: `{ year }`
-  - response: `201` with body:
-    - `id`
-    - `companyId`
-    - `fiscalYear`
-    - `format` (`pdf`)
-    - `currency` (`CHF`)
-    - `generatedAt`
-    - `checksumSha256`
-    - `downloadUrl` (`/api/reports/annual-pl/exports/{id}/file`)
-- `GET /api/reports/annual-pl/exports?year=YYYY`
-  - response: `200` list of export metadata for active company and year, ordered `generated_at DESC, id DESC`.
-- `GET /api/reports/annual-pl/exports/:id/file`
-  - response: PDF stream for active-company-owned export id, with download `Content-Disposition`.
+  - response: `200` PDF stream with download `Content-Disposition`.
 
 Deterministic errors:
 
 - `INVALID_EXPORT_YEAR`
 - `EXPORT_GENERATION_FAILED`
-- `EXPORT_NOT_FOUND`
-- `EXPORT_FORBIDDEN_COMPANY_SCOPE`
 
 ## 10) Edge cases
 
@@ -178,7 +211,8 @@ Deterministic errors:
 - [ ] Annual P&L uses exactly the 8-row order from `010` §5.2.
 - [ ] Export PDF includes current and prior-year amounts for all 8 rows.
 - [ ] Export is generated deterministically from the canonical summary computation model (independent of UI `view`/`mode`).
-- [ ] Export snapshot is persisted with checksum, download path, and row-level payload (`snapshot_json`).
+- [ ] Export is generated on demand and returned directly without DB persistence.
+- [ ] PDF output follows the mandatory visual design requirements (hierarchy, typography, alignment, separators, emphasis, and print-safe styling).
 - [ ] Net Profit / Loss formula is aligned with `011` (`Operating Result - Financial / Other - Taxes`).
 - [ ] Export clearly indicates simplified-record scope (`Milchbüchleinrechnung`) and avoids statutory-label ambiguity.
 - [ ] Build and lint pass.
@@ -189,4 +223,4 @@ Deterministic errors:
 - German labels are required for PDF export output; existing screen language stays unchanged in this slice.
 - CHF only.
 - PDF only.
-- Export errors in this slice: `INVALID_EXPORT_YEAR`, `EXPORT_GENERATION_FAILED`, `EXPORT_NOT_FOUND`, `EXPORT_FORBIDDEN_COMPANY_SCOPE`.
+- Export errors in this slice: `INVALID_EXPORT_YEAR`, `EXPORT_GENERATION_FAILED`.
