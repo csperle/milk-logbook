@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useEffect, useMemo } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { AnnualPlEntry } from "@/lib/accounting-entries-repo";
+import { buildAnnualPlReportData } from "@/lib/reports/annual-pl-report";
 
 type Props = {
   activeCompanyId: number;
@@ -14,48 +15,6 @@ type Props = {
 
 type ViewMode = "summary" | "details";
 type ReportMode = "actual" | "compare" | "common_size";
-
-type ExpenseDetailRow = {
-  typeOfExpenseId: number | null;
-  expenseTypeText: string;
-  current: number;
-  prior: number;
-};
-
-type ExpenseDetailByCategory = {
-  directCosts: ExpenseDetailRow[];
-  operatingExpenses: ExpenseDetailRow[];
-  financialOther: ExpenseDetailRow[];
-  taxes: ExpenseDetailRow[];
-};
-
-type IncomeDetailRow = {
-  counterpartyName: string;
-  current: number;
-  prior: number;
-};
-
-type Totals = {
-  revenue: number;
-  directCosts: number;
-  operatingExpenses: number;
-  financialOther: number;
-  taxes: number;
-  categorizedExpenses: number;
-  uncategorizedExpenses: number;
-};
-
-type StatementRow = {
-  key: string;
-  label: string;
-  kind: "value" | "subtotal";
-  mathRole: "add" | "subtract" | "subtotal";
-  current: number;
-  prior: number;
-  hasEntries: boolean;
-  entryType: "all" | "income" | "expense";
-  optional?: boolean;
-};
 
 function parseSelectedYear(value: string | null, availableYears: number[], fallback: number): number {
   if (value !== null) {
@@ -122,141 +81,6 @@ function formatPercentagePointDelta(current: number, prior: number, currentReven
   return `${ppDelta.toFixed(2)} pp`;
 }
 
-function compareExpenseDetailRows(a: ExpenseDetailRow, b: ExpenseDetailRow): number {
-  if (a.current !== b.current) {
-    return b.current - a.current;
-  }
-
-  const textCompare = a.expenseTypeText.localeCompare(b.expenseTypeText);
-  if (textCompare !== 0) {
-    return textCompare;
-  }
-
-  if (a.typeOfExpenseId === null && b.typeOfExpenseId === null) {
-    return 0;
-  }
-  if (a.typeOfExpenseId === null) {
-    return 1;
-  }
-  if (b.typeOfExpenseId === null) {
-    return -1;
-  }
-
-  return a.typeOfExpenseId - b.typeOfExpenseId;
-}
-
-function compareIncomeDetailRows(a: IncomeDetailRow, b: IncomeDetailRow): number {
-  if (a.current !== b.current) {
-    return b.current - a.current;
-  }
-  return a.counterpartyName.localeCompare(b.counterpartyName);
-}
-
-function normalizeCounterpartyName(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length < 1) {
-    return "Unknown counterparty";
-  }
-  return trimmed;
-}
-
-function buildExpenseDetailsByCategory(
-  rows: AnnualPlEntry[],
-  selectedYear: number,
-  priorYear: number,
-): ExpenseDetailByCategory {
-  const directCosts = new Map<string, ExpenseDetailRow>();
-  const operatingExpenses = new Map<string, ExpenseDetailRow>();
-  const financialOther = new Map<string, ExpenseDetailRow>();
-  const taxes = new Map<string, ExpenseDetailRow>();
-
-  for (const entry of rows) {
-    if (entry.entryType !== "expense") {
-      continue;
-    }
-    if (entry.documentYear !== selectedYear && entry.documentYear !== priorYear) {
-      continue;
-    }
-
-    let targetMap: Map<string, ExpenseDetailRow> | null = null;
-    if (entry.expensePlCategory === "direct_cost") {
-      targetMap = directCosts;
-    } else if (entry.expensePlCategory === "operating_expense") {
-      targetMap = operatingExpenses;
-    } else if (entry.expensePlCategory === "financial_other") {
-      targetMap = financialOther;
-    } else if (entry.expensePlCategory === "tax") {
-      targetMap = taxes;
-    }
-
-    if (!targetMap) {
-      continue;
-    }
-
-    const key = entry.typeOfExpenseId === null ? "null" : String(entry.typeOfExpenseId);
-    const existing = targetMap.get(key);
-    if (existing) {
-      if (entry.documentYear === selectedYear) {
-        existing.current += entry.amountGross;
-      } else {
-        existing.prior += entry.amountGross;
-      }
-      continue;
-    }
-
-    const current = entry.documentYear === selectedYear ? entry.amountGross : 0;
-    const prior = entry.documentYear === priorYear ? entry.amountGross : 0;
-    targetMap.set(key, {
-      typeOfExpenseId: entry.typeOfExpenseId,
-      expenseTypeText: entry.expenseTypeText ?? "Unassigned",
-      current,
-      prior,
-    });
-  }
-
-  return {
-    directCosts: Array.from(directCosts.values()).sort(compareExpenseDetailRows),
-    operatingExpenses: Array.from(operatingExpenses.values()).sort(compareExpenseDetailRows),
-    financialOther: Array.from(financialOther.values()).sort(compareExpenseDetailRows),
-    taxes: Array.from(taxes.values()).sort(compareExpenseDetailRows),
-  };
-}
-
-function buildTotals(rows: AnnualPlEntry[]): Totals {
-  return rows.reduce(
-    (acc, row) => {
-      if (row.entryType === "income") {
-        acc.revenue += row.amountGross;
-      } else {
-        if (row.expensePlCategory === "direct_cost") {
-          acc.directCosts += row.amountGross;
-          acc.categorizedExpenses += row.amountGross;
-        } else if (row.expensePlCategory === "operating_expense") {
-          acc.operatingExpenses += row.amountGross;
-          acc.categorizedExpenses += row.amountGross;
-        } else if (row.expensePlCategory === "financial_other") {
-          acc.financialOther += row.amountGross;
-          acc.categorizedExpenses += row.amountGross;
-        } else if (row.expensePlCategory === "tax") {
-          acc.taxes += row.amountGross;
-          acc.categorizedExpenses += row.amountGross;
-        } else {
-          acc.uncategorizedExpenses += row.amountGross;
-        }
-      }
-      return acc;
-    },
-    {
-      revenue: 0,
-      directCosts: 0,
-      operatingExpenses: 0,
-      financialOther: 0,
-      taxes: 0,
-      categorizedExpenses: 0,
-      uncategorizedExpenses: 0,
-    } satisfies Totals,
-  );
-}
 
 function formatSignedDelta(amountCents: number): string {
   if (amountCents > 0) {
@@ -358,6 +182,9 @@ export function AnnualPlPageClient({
 
   const selectedYear = parseSelectedYear(searchParams.get("year"), availableYears, defaultYear);
   const priorYear = selectedYear - 1;
+  const [isExporting, setIsExporting] = useState(false);
+  const [showExportSpinner, setShowExportSpinner] = useState(false);
+  const spinnerTimeoutRef = useRef<number | null>(null);
 
   const canonicalQuery = useMemo(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -373,190 +200,19 @@ export function AnnualPlPageClient({
     }
   }, [canonicalQuery, pathname, router, searchParams]);
 
-  const selectedYearEntries = useMemo(() => {
-    return entries.filter((entry) => entry.documentYear === selectedYear);
-  }, [entries, selectedYear]);
-
-  const priorYearEntries = useMemo(() => {
-    return entries.filter((entry) => entry.documentYear === priorYear);
-  }, [entries, priorYear]);
-
-  const currentTotals = useMemo(() => buildTotals(selectedYearEntries), [selectedYearEntries]);
-  const priorTotals = useMemo(() => buildTotals(priorYearEntries), [priorYearEntries]);
-
-  const currentGrossProfit = currentTotals.revenue - currentTotals.directCosts;
-  const priorGrossProfit = priorTotals.revenue - priorTotals.directCosts;
-  const currentOperatingResult = currentGrossProfit - currentTotals.operatingExpenses;
-  const priorOperatingResult = priorGrossProfit - priorTotals.operatingExpenses;
-  const currentResult =
-    currentOperatingResult - currentTotals.financialOther - currentTotals.taxes;
-  const priorResult = priorOperatingResult - priorTotals.financialOther - priorTotals.taxes;
-
-  const incomeDetails = useMemo(() => {
-    const byCounterparty = new Map<string, IncomeDetailRow>();
-
-    for (const entry of entries) {
-      if (entry.entryType !== "income") {
-        continue;
-      }
-      if (entry.documentYear !== selectedYear && entry.documentYear !== priorYear) {
-        continue;
-      }
-
-      const normalizedName = normalizeCounterpartyName(entry.counterpartyName);
-      const key = normalizedName.toLocaleLowerCase("en-US");
-      const existing = byCounterparty.get(key);
-      if (existing) {
-        if (entry.documentYear === selectedYear) {
-          existing.current += entry.amountGross;
-        } else {
-          existing.prior += entry.amountGross;
-        }
-        continue;
-      }
-
-      byCounterparty.set(key, {
-        counterpartyName: normalizedName,
-        current: entry.documentYear === selectedYear ? entry.amountGross : 0,
-        prior: entry.documentYear === priorYear ? entry.amountGross : 0,
-      });
-    }
-
-    return Array.from(byCounterparty.values()).sort(compareIncomeDetailRows);
-  }, [entries, priorYear, selectedYear]);
-
-  const expenseDetailsByCategory = useMemo(
-    () => buildExpenseDetailsByCategory(entries, selectedYear, priorYear),
-    [entries, priorYear, selectedYear],
+  const report = useMemo(() => buildAnnualPlReportData(entries, selectedYear), [entries, selectedYear]);
+  const currentTotals = report.currentTotals;
+  const priorTotals = report.priorTotals;
+  const currentResult = report.currentResult;
+  const priorResult = report.priorResult;
+  const incomeDetails = report.incomeDetails;
+  const expenseDetailsByCategory = report.expenseDetailsByCategory;
+  const statementRows = report.statementRows;
+  const selectedYearEntries = useMemo(
+    () => entries.filter((entry) => entry.documentYear === selectedYear),
+    [entries, selectedYear],
   );
-
   const hasAnyEntries = entries.length > 0;
-  const hasUnassignedExpenses = currentTotals.uncategorizedExpenses !== 0;
-
-  const statementRows = useMemo(() => {
-    const directCostsCurrent = currentTotals.directCosts;
-    const directCostsPrior = priorTotals.directCosts;
-    const grossProfitCurrent = currentGrossProfit;
-    const grossProfitPrior = priorGrossProfit;
-    const operatingExpensesCurrent = currentTotals.operatingExpenses;
-    const operatingExpensesPrior = priorTotals.operatingExpenses;
-    const operatingResultCurrent = currentOperatingResult;
-    const operatingResultPrior = priorOperatingResult;
-    const financialOtherCurrent = currentTotals.financialOther;
-    const financialOtherPrior = priorTotals.financialOther;
-    const taxesCurrent = currentTotals.taxes;
-    const taxesPrior = priorTotals.taxes;
-
-    const rows: StatementRow[] = [
-      {
-        key: "revenue",
-        label: "Revenue",
-        kind: "value",
-        mathRole: "add",
-        current: currentTotals.revenue,
-        prior: priorTotals.revenue,
-        hasEntries: true,
-        entryType: "income",
-      },
-      {
-        key: "direct_costs",
-        label: "Direct Costs",
-        kind: "value",
-        mathRole: "subtract",
-        current: directCostsCurrent,
-        prior: directCostsPrior,
-        hasEntries: directCostsCurrent !== 0 || directCostsPrior !== 0,
-        entryType: "expense",
-        optional: true,
-      },
-      {
-        key: "gross_profit",
-        label: "Gross Profit",
-        kind: "subtotal",
-        mathRole: "subtotal",
-        current: grossProfitCurrent,
-        prior: grossProfitPrior,
-        hasEntries: true,
-        entryType: "all",
-      },
-      {
-        key: "operating_expenses",
-        label: "Operating Expenses",
-        kind: "value",
-        mathRole: "subtract",
-        current: operatingExpensesCurrent,
-        prior: operatingExpensesPrior,
-        hasEntries: operatingExpensesCurrent !== 0 || operatingExpensesPrior !== 0,
-        entryType: "expense",
-      },
-      {
-        key: "operating_result",
-        label: "Operating Result",
-        kind: "subtotal",
-        mathRole: "subtotal",
-        current: operatingResultCurrent,
-        prior: operatingResultPrior,
-        hasEntries: true,
-        entryType: "all",
-      },
-      {
-        key: "financial_other",
-        label: "Financial / Other",
-        kind: "value",
-        mathRole: "subtract",
-        current: financialOtherCurrent,
-        prior: financialOtherPrior,
-        hasEntries: financialOtherCurrent !== 0 || financialOtherPrior !== 0,
-        entryType: "expense",
-        optional: true,
-      },
-      {
-        key: "taxes",
-        label: "Taxes",
-        kind: "value",
-        mathRole: "subtract",
-        current: taxesCurrent,
-        prior: taxesPrior,
-        hasEntries: taxesCurrent !== 0 || taxesPrior !== 0,
-        entryType: "expense",
-        optional: true,
-      },
-      {
-        key: "net_profit_loss",
-        label: "Net Profit / Loss",
-        kind: "subtotal",
-        mathRole: "subtotal",
-        current: currentResult,
-        prior: priorResult,
-        hasEntries: true,
-        entryType: "all",
-      },
-    ];
-
-    return rows.filter((row) => {
-      if (!row.optional) {
-        return true;
-      }
-      return row.current !== 0 || row.prior !== 0;
-    });
-  }, [
-    currentGrossProfit,
-    currentOperatingResult,
-    currentResult,
-    currentTotals.directCosts,
-    currentTotals.financialOther,
-    currentTotals.operatingExpenses,
-    currentTotals.revenue,
-    currentTotals.taxes,
-    priorGrossProfit,
-    priorOperatingResult,
-    priorResult,
-    priorTotals.directCosts,
-    priorTotals.financialOther,
-    priorTotals.operatingExpenses,
-    priorTotals.revenue,
-    priorTotals.taxes,
-  ]);
 
   const emptyStateText = !hasAnyEntries
     ? "No accounting entries yet. Upload invoices to start building your annual P&L."
@@ -567,11 +223,68 @@ export function AnnualPlPageClient({
     {
       key: "expenses",
       label: "Expenses",
-      current: currentTotals.categorizedExpenses,
-      prior: priorTotals.categorizedExpenses,
+      current: currentTotals.expenses,
+      prior: priorTotals.expenses,
     },
     { key: "net", label: "Net Result", current: currentResult, prior: priorResult },
   ];
+
+  async function handleExport(): Promise<void> {
+    if (isExporting) {
+      return;
+    }
+    setIsExporting(true);
+    setShowExportSpinner(false);
+    spinnerTimeoutRef.current = window.setTimeout(() => {
+      setShowExportSpinner(true);
+    }, 2000);
+
+    try {
+      const response = await fetch("/api/reports/annual-pl/export", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ year: selectedYear }),
+      });
+
+      if (!response.ok) {
+        setShowExportSpinner(false);
+        window.alert("Could not generate annual P&L export.");
+        return;
+      }
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const disposition = response.headers.get("Content-Disposition");
+      const filenameMatch = disposition?.match(/filename\*=UTF-8''([^;]+)/);
+      const filename = filenameMatch ? decodeURIComponent(filenameMatch[1]) : `annual-pl-${selectedYear}.pdf`;
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch {
+      window.alert("Could not generate annual P&L export.");
+    } finally {
+      if (spinnerTimeoutRef.current !== null) {
+        window.clearTimeout(spinnerTimeoutRef.current);
+        spinnerTimeoutRef.current = null;
+      }
+      setShowExportSpinner(false);
+      setIsExporting(false);
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (spinnerTimeoutRef.current !== null) {
+        window.clearTimeout(spinnerTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <main className="min-h-screen bg-zinc-50 px-6 py-12 text-zinc-900">
@@ -583,6 +296,9 @@ export function AnnualPlPageClient({
             <p className="mt-1 text-sm text-zinc-600">
               Company #{activeCompanyId} | Fiscal year {selectedYear}
             </p>
+            <p className="mt-2 inline-flex rounded border border-zinc-300 bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700">
+              Management report (Milchbüchleinrechnung)
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
@@ -593,11 +309,19 @@ export function AnnualPlPageClient({
             </Link>
             <button
               type="button"
-              disabled
-              className="inline-flex cursor-not-allowed items-center rounded-md border border-zinc-200 bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-500"
-              aria-disabled="true"
+              disabled={isExporting}
+              onClick={handleExport}
+              className={`inline-flex items-center gap-2 rounded-md border px-4 py-2 text-sm font-medium ${
+                isExporting
+                  ? "cursor-not-allowed border-zinc-200 bg-zinc-100 text-zinc-500"
+                  : "border-zinc-300 bg-white text-zinc-800 hover:bg-zinc-100"
+              }`}
+              aria-busy={isExporting}
             >
-              Export (coming soon)
+              {showExportSpinner ? (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-400 border-t-transparent" />
+              ) : null}
+              <span>{isExporting ? "Exporting PDF..." : "Export annual P&L (PDF)"}</span>
             </button>
           </div>
         </header>
@@ -701,12 +425,6 @@ export function AnnualPlPageClient({
             ) : null}
           </article>
         </section>
-
-        {hasUnassignedExpenses ? (
-          <section className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            Some expense entries are missing a P&amp;L category and are excluded from categorized summary lines.
-          </section>
-        ) : null}
 
         {!hasAnyEntries ? (
           <section className="rounded border border-zinc-300 bg-white px-4 py-5 text-sm text-zinc-600">
@@ -865,7 +583,9 @@ export function AnnualPlPageClient({
                               ? expenseDetailsByCategory.financialOther
                               : expenseDetailsByCategory.taxes
                         ).map((detailRow) => (
-                          <tr key={`expense-${detailRow.typeOfExpenseId ?? "unassigned"}`}>
+                          <tr
+                            key={`expense-${detailRow.typeOfExpenseId ?? "unassigned"}-${detailRow.expenseTypeText}`}
+                          >
                             <td className="px-3 py-2"></td>
                             <td className="sticky left-0 bg-white px-3 py-2 pl-8 text-zinc-700">
                               <Link href={buildOverviewDrillthroughHref(selectedYear, "expense")} className="underline">
