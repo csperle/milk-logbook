@@ -35,6 +35,7 @@ Reference links:
 - Keep route `/reports/annual-pl` as the single annual P&L surface.
 - Add/keep export action for annual P&L (PDF).
 - Use fixed simplified row order from `010` §5.2.
+- Show expense details by `expense type` grouped under their mapped P&L category section.
 - Show current year and prior year values side-by-side.
 - Use CHF formatting and deterministic calculation rules.
 - Generate export on demand (fire-and-forget).
@@ -55,7 +56,7 @@ Reference links:
 
 ## 5) Required P&L structure and order (from 010 §5.2)
 
-The exported/visible statement must follow this exact order:
+The statement keeps the canonical summary order below as section totals:
 
 1. Revenue
 2. Direct Costs
@@ -69,18 +70,31 @@ The exported/visible statement must follow this exact order:
 Rules:
 
 - No reordering.
+- Category total rows (`Direct Costs`, `Operating Expenses`, `Financial / Other`, `Taxes`) are shown only when the category has at least one included expense-type subtotal `> 0`.
 - Summary lines (`Gross Profit`, `Operating Result`, `Net Profit / Loss`) are always shown.
 - Zero lines may be hidden in UI summary view, but exported PDF must show all 8 rows.
+- Expense detail rows are shown by expense type under their mapped category section in the PDF.
 
 ## 6) Data mapping (minimal, aligned with spec 011)
 
 Given current model:
 
 - `Revenue` = sum of `income` entries.
-- `Direct Costs`, `Operating Expenses`, `Financial / Other`, `Taxes` = sums from `expense` entries by existing `expense_pl_category` mapping.
+- Expense entries are first grouped by `expense type` within each `expense_pl_category`.
+- Category total rows (`Direct Costs`, `Operating Expenses`, `Financial / Other`, `Taxes`) are subtotals of their included expense-type rows.
 - `Gross Profit` = `Revenue - Direct Costs`.
 - `Operating Result` = `Gross Profit - Operating Expenses`.
 - `Net Profit / Loss` = `Operating Result - Financial / Other - Taxes`.
+
+Expense-type detail rules:
+
+- Each expense-type row label uses the configured `expenseTypeText`.
+- Row placement is determined by that expense type's mapped `pl_category`.
+- Deterministic row order inside each category: alphabetical by normalized expense type text.
+- Expense entries without a resolvable expense type/category are included as `Unassigned` within `Operating Expenses`.
+- Category visibility rule:
+  - show category subtotal + its detail rows only if at least one included expense-type subtotal is `> 0` (considering current year and prior year columns).
+  - hide category section entirely when all included expense-type subtotals are `<= 0` or absent.
 
 Computation policy:
 
@@ -126,7 +140,7 @@ The export must be presentation-quality and not look like a raw/plain table.
   - subtotal/total rows (`Gross Profit`, `Operating Result`, `Net Profit / Loss`): semibold.
   - avoid decorative or script fonts.
 - Table composition:
-  - fixed 3-column layout:
+  - fixed 3-column numeric layout:
     - left: row label,
     - middle: selected year amount,
     - right: prior year amount.
@@ -134,7 +148,8 @@ The export must be presentation-quality and not look like a raw/plain table.
   - amount columns are right-aligned with tabular-number style where available.
   - maintain consistent row height and padding.
 - Indentation and grouping:
-  - base rows (`Revenue`, `Direct Costs`, `Operating Expenses`, `Financial / Other`, `Taxes`) on base indent.
+  - top-level rows (`Revenue`, category subtotal rows, summary rows) on base indent.
+  - expense-type detail rows are indented one level under their category subtotal row.
   - computed rows (`Gross Profit`, `Operating Result`, `Net Profit / Loss`) visually distinguished via stronger weight and separator lines, not deeper indentation.
 - Lines and separators:
   - header row has top and bottom rule.
@@ -198,7 +213,9 @@ Deterministic errors:
 - No prior-year entries:
   - prior-year column is `CHF 0.00`.
 - Unassigned expense categories:
-  - include in `Operating Expenses` by default.
+  - include as `Unassigned` expense-type row under `Operating Expenses`.
+- Category with no positive expense-type subtotal:
+  - hide the category subtotal row and its detail rows.
 - Year outside deterministic bounds (non-4-digit or invalid):
   - reject with `INVALID_EXPORT_YEAR`.
 - Year validation bounds:
@@ -208,8 +225,11 @@ Deterministic errors:
 
 ## 11) Acceptance criteria
 
-- [ ] Annual P&L uses exactly the 8-row order from `010` §5.2.
-- [ ] Export PDF includes current and prior-year amounts for all 8 rows.
+- [ ] Annual P&L keeps the canonical 8-row order from `010` §5.2 as top-level section totals.
+- [ ] Export PDF includes current and prior-year amounts for all top-level rows and expense-type detail rows.
+- [ ] Expense values are presented by expense type (not only aggregated by category) and grouped under their mapped category section.
+- [ ] Category rows are rendered as subtotals of their included expense-type rows.
+- [ ] A category subtotal row is shown only when at least one included expense-type subtotal is `> 0`; otherwise that category section is hidden.
 - [ ] Export is generated deterministically from the canonical summary computation model (independent of UI `view`/`mode`).
 - [ ] Export is generated on demand and returned directly without DB persistence.
 - [ ] PDF output follows the mandatory visual design requirements (hierarchy, typography, alignment, separators, emphasis, and print-safe styling).
